@@ -3,7 +3,7 @@ import { defineEffect } from '../effects.js';
 import { COMPRESSOR_DEFAULTS } from './compressor-dsp.js';
 import { createWorkletEffect } from './worklet-effect.js';
 
-const PROCESSOR_URL = '/src/effects/worklets/compressor-processor.js';
+const PROCESSOR_URL = new URL('./worklets/compressor-processor.js', import.meta.url);
 const PROCESSOR_NAME = 'compressor';
 
 const ms = (v) => (v >= 100 ? `${Math.round(v)}ms` : `${v.toFixed(1)}ms`);

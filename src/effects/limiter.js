@@ -9,7 +9,7 @@
 import { LIMITER_DEFAULTS } from './limiter-dsp.js';
 import { createWorkletEffect } from './worklet-effect.js';
 
-const PROCESSOR_URL = '/src/effects/worklets/limiter-processor.js';
+const PROCESSOR_URL = new URL('./worklets/limiter-processor.js', import.meta.url);
 const PROCESSOR_NAME = 'limiter';
 
 /**

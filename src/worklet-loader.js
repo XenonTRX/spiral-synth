@@ -31,13 +31,19 @@ export function loadWorklet(ctx, url) {
     modules = new Map();
     byContext.set(ctx, modules);
   }
-  let entry = modules.get(url);
+  // Keyed by the URL as text, not by whatever was handed in. Callers name their processor with
+  // `new URL('./worklets/x.js', import.meta.url)` so that it resolves wherever the app is served
+  // from, and a Map keyed on the object itself would compare those by identity - fine while every
+  // caller holds one at module scope, and a silent re-load of the module on every note the day one
+  // of them builds the URL at the call site instead.
+  const key = String(url);
+  let entry = modules.get(key);
   if (!entry) {
     entry = { ready: false, promise: null };
     entry.promise = ctx.audioWorklet.addModule(url).then(() => {
       entry.ready = true;
     });
-    modules.set(url, entry);
+    modules.set(key, entry);
   }
   return entry;
 }

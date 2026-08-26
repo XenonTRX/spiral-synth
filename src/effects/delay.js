@@ -21,7 +21,7 @@ import { DELAY_DEFAULTS, MAX_DELAY_SECONDS, delayTailSeconds } from './delay-dsp
 import { createWorkletEffect } from './worklet-effect.js';
 import { hz } from '../format.js';
 
-const PROCESSOR_URL = '/src/effects/worklets/delay-processor.js';
+const PROCESSOR_URL = new URL('./worklets/delay-processor.js', import.meta.url);
 const PROCESSOR_NAME = 'delay';
 
 const FREE = 'free';

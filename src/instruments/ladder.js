@@ -28,7 +28,7 @@ import { cutoffTrajectory, steadyFilterState } from './filter-envelope.js';
 import { loadWorklet } from '../worklet-loader.js';
 import { ms, pct } from '../format.js';
 
-const PROCESSOR_URL = '/src/instruments/worklets/ladder-processor.js';
+const PROCESSOR_URL = new URL('./worklets/ladder-processor.js', import.meta.url);
 const PROCESSOR_NAME = 'ladder';
 
 

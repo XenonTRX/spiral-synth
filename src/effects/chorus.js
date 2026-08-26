@@ -11,7 +11,7 @@ import { defineEffect } from '../effects.js';
 import { CHORUS_DEFAULTS, chorusTailSeconds } from './chorus-dsp.js';
 import { createWorkletEffect } from './worklet-effect.js';
 
-const PROCESSOR_URL = '/src/effects/worklets/chorus-processor.js';
+const PROCESSOR_URL = new URL('./worklets/chorus-processor.js', import.meta.url);
 const PROCESSOR_NAME = 'chorus';
 
 export const CHORUS_PARAMS = [

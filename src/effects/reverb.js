@@ -4,7 +4,7 @@ import { REVERB_DEFAULTS } from './reverb-dsp.js';
 import { createWorkletEffect } from './worklet-effect.js';
 import { hz } from '../format.js';
 
-const PROCESSOR_URL = '/src/effects/worklets/reverb-processor.js';
+const PROCESSOR_URL = new URL('./worklets/reverb-processor.js', import.meta.url);
 const PROCESSOR_NAME = 'reverb';
 
 

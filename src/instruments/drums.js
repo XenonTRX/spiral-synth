@@ -21,7 +21,7 @@ import { DRUMS, DRUM_HIGH, DRUM_LOW, drumForMidi } from './drum-map.js';
 import { loadWorklet } from '../worklet-loader.js';
 import { ms, pct } from '../format.js';
 
-const PROCESSOR_URL = '/src/instruments/worklets/drum-processor.js';
+const PROCESSOR_URL = new URL('./worklets/drum-processor.js', import.meta.url);
 const PROCESSOR_NAME = 'drums';
 
 const hz = (v) => `${Math.round(v)} Hz`;

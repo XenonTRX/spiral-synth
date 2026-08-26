@@ -24,7 +24,7 @@ import { MAX_UNISON, unisonOffsets } from './worklets/voice-dsp.js';
 import { loadWorklet } from '../worklet-loader.js';
 import { ms, pct } from '../format.js';
 
-const PROCESSOR_URL = '/src/instruments/worklets/wavetable-processor.js';
+const PROCESSOR_URL = new URL('./worklets/wavetable-processor.js', import.meta.url);
 const PROCESSOR_NAME = 'wavetable';
 
 
