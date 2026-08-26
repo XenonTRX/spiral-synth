@@ -1,4 +1,30 @@
+<div align="center">
+
 # Spiral Synth
+
+**The roll says _when_. The spiral says _what_.**
+
+A browser DAW built around a chromatic pitch-spiral, where a chord is a shape you can see.
+No build step, no dependencies, no framework — ES modules served raw.
+
+<img src="https://img.shields.io/badge/build%20step-none-7dd3fc?style=flat-square&labelColor=1c1f27" alt="No build step">
+<img src="https://img.shields.io/badge/dependencies-zero-7dd3fc?style=flat-square&labelColor=1c1f27" alt="Zero dependencies">
+<img src="https://img.shields.io/badge/audio-Web%20Audio%20API-c4b5fd?style=flat-square&labelColor=1c1f27" alt="Web Audio API">
+<img src="https://img.shields.io/badge/tests-node%20--test-c4b5fd?style=flat-square&labelColor=1c1f27" alt="Tested with node --test">
+
+<br>
+
+<img src="docs/images/hero.png" alt="Spiral Synth: a piano roll of three parts on the left, the pitch-spiral and chord palette on the right" width="900">
+
+</div>
+
+```bash
+node server.js     # then open http://127.0.0.1:5173
+```
+
+---
+
+## The idea
 
 A prototype for testing one idea about music notation: that **pitch class is best read as an
 angle**. It is now built as an ordinary DAW — a piano roll, a cursor, a transport — with the
@@ -36,6 +62,19 @@ means anything — you cannot judge a chord notation on music you cannot write d
 - Each slot **narrows toward its leading end**, so it shows which way round the spiral pitch
   increases without needing anything else on screen to compare against.
 
+<table>
+<tr>
+<td width="50%" valign="top" align="center">
+<img src="docs/images/spiral.png" alt="The spiral panel: C4, E4 and G4 lit on a three-turn chromatic dial">
+<br><sub><em>C major at the cursor — three lit slots, and the angles between them.</em></sub>
+</td>
+<td width="50%" valign="top" align="center">
+<img src="docs/images/chords.png" alt="The chord palette: eleven chord types drawn as shapes on a twelve-point ring">
+<br><sub><em>The palette. Each chord is one shape, and it is that shape at every root.</em></sub>
+</td>
+</tr>
+</table>
+
 ## The cursor
 
 One vertical line through the whole roll, at one moment in the song. It is not a selection and
@@ -63,6 +102,15 @@ enter a line.
 | **Reference** | an imported recording, laid against the bars |
 | **Songs** | naming, listing, loading, deleting |
 | **Options ⚙** | the behaviours that are still open questions, defined in `src/settings.js` |
+
+The **Key ✱** panel is where the notation argues for itself. A dropdown cannot make the case —
+`Phrygian` is a word — so the modes are thirteen dials instead, each one a single turn of the
+spiral with that mode shaded onto it. Lydian beside Major is one slot moving a step round the
+circle, which is the thing the words never said.
+
+<div align="center">
+<img src="docs/images/modes.png" alt="Thirteen modes drawn as dials: Chromatic, Major, Dorian, Phrygian, Lydian, Mixolydian, Minor, Locrian, harmonic and melodic minor, both pentatonics, and Blues" width="620">
+</div>
 
 ## Keyboard
 
@@ -130,6 +178,13 @@ arithmetic and import without a browser, plus the static server. See
 
 ## Where the code lives
 
+<details>
+<summary><b>Every module and what it owns</b> — the model, the surfaces, the DSP, the panels</summary>
+
+<br>
+
+**The song and the surfaces that edit it**
+
 | | |
 |---|---|
 | `src/song.js` | the model — parts, notes, key markers, both cursors, selection, undo |
@@ -141,6 +196,13 @@ arithmetic and import without a browser, plus the static server. See
 | `src/track-rack.js` | the rack: one row per part, sitting above the roll |
 | `src/time-scale.js` | how much room one whole note is worth - the roll's only zoom |
 | `src/drum-lane.js` | the step lane — a drum grid over the same notes the roll edits |
+| `src/edits.js` | operations reachable from more than one surface, so they cannot diverge |
+| `src/keyboard.js` | the shortcut layer |
+
+**The spiral, and everything that draws pitch**
+
+| | |
+|---|---|
 | `src/spiral-panel.js` | binds the spiral to the cursor and turns its gestures into edits |
 | `src/views/spiral-view.js` | the drawing: 36 slots, angle guides, ghosts, cursor outline |
 | `src/spiral-geometry.js` | slot outlines, and the point-to-slot inverse dragging needs |
@@ -150,20 +212,26 @@ arithmetic and import without a browser, plus the static server. See
 | `src/views/common.js` | shared vocabulary for anything that draws pitch |
 | `src/key-editor.js` | the picket: the key, thirteen modes as dials, and the chords that fit |
 | `src/note-tools.js` | the selected note as controls — velocity, and whether it slides |
-| `src/edits.js` | operations reachable from more than one surface, so they cannot diverge |
-| `src/keyboard.js` | the shortcut layer |
+
+**Time, playback and rendering**
+
+| | |
+|---|---|
 | `src/grid.js` | snap and resolution — where starts and lengths are allowed to land |
 | `src/meter.js` | the bar map — how long a bar is, how it divides, and how positions are counted |
+| `src/tempo.js` | the tempo, in one place, so a synced delay can read it |
 | `src/transport.js` | lookahead scheduling on one shared timeline |
 | `src/timeline.js` | which notes are where — the one walk the transport and the exporter share |
 | `src/export.js` | rendering the song offline, and writing a WAV by hand |
-| `src/music-theory.js` | pitch, scales, the duration lattice, snap sizes |
-| `src/fft.js` | one Fourier transform, forward and inverse, for everything that needs one |
-| `src/wavetable.js` | band-limited tables: harmonic specs, the mip pyramid, Hermite playback |
-| `src/params.js` | what a knob is, on its own — no imports, so it cannot be in a cycle |
 | `src/automation.js` | what is a function of where you are in the song — fades, and a synced sweep |
 | `src/fade-lane.js` | a part's two fades, drawn as the part and dragged by its corners — at either scale |
-| `src/tempo.js` | the tempo, in one place, so a synced delay can read it |
+| `src/audio.js` | the context, the bus chain, the clock, and the note accounting |
+| `src/master-strip.js` | the fader, the level and reduction meters, and the ceiling |
+
+**Instruments**
+
+| | |
+|---|---|
 | `src/instruments.js` | the registry a part names an instrument from |
 | `src/modulation.js` | sources, destinations and the matrix — defined once, realized on both threads |
 | `src/instruments/subtractive.js` | oscillators, both envelopes, the filter sweep |
@@ -180,8 +248,38 @@ arithmetic and import without a browser, plus the static server. See
 | `src/instruments/builtins.js` | the one line adding an instrument costs |
 | `src/engine.js` | a set of instruments bound to a context — the live one, and the render's |
 | `src/synth-panel.js` | the voice panel, built from whatever the instrument declares |
-| `src/storage.js` | localStorage, the autosave, and the document a song is saved as |
-| `src/save-panel.js` | the Songs panel — naming, listing, loading, deleting |
+
+**Effects**
+
+| | |
+|---|---|
+| `src/effects.js` | the registry a chain names an effect from |
+| `src/effects/chain.js` | a row of effects between two endpoints that never move |
+| `src/effects/builtins.js` | the one line adding an effect costs |
+| `src/effects/filter.js` | multi-mode filter on native biquads, and the Q-in-decibels conversion |
+| `src/effects/compressor-dsp.js` | the compressor's arithmetic — gain computer, knee, ballistics |
+| `src/effects/compressor.js` | its main-thread half, and the shell in `worklets/compressor-processor.js` |
+| `src/effects/limiter-dsp.js` | the limiter's arithmetic — delay line, sliding minimum, no Web Audio |
+| `src/effects/worklets/limiter-processor.js` | the audio-thread shell around it |
+| `src/effects/limiter.js` | the main-thread half: two fixed endpoints, and a processor spliced in late |
+| `src/effects/reverb-dsp.js` | the reverb's arithmetic — eight delay lines and a Hadamard matrix |
+| `src/effects/reverb.js` | its main-thread half, and the shell in `worklets/reverb-processor.js` |
+| `src/effects/delay-line.js` | a fractional ring buffer, a loop tone pair, and one soft clipper |
+| `src/effects/delay-dsp.js` | the tape delay's arithmetic — glide with a speed limit, wow in cents |
+| `src/effects/delay.js` | its main-thread half, and the shell in `worklets/delay-processor.js` |
+| `src/effects/chorus-dsp.js` | the chorus's arithmetic — one LFO, three taps, a bounded feedback path |
+| `src/effects/chorus.js` | its main-thread half, and the shell in `worklets/chorus-processor.js` |
+| `src/effects/drive-curve.js` | the four shaping curves, and what normalises them |
+| `src/effects/drive.js` | four native nodes: the shaper, a DC blocker, a tone lowpass, a trim |
+| `src/effects/worklet-effect.js` | the endpoint splice every worklet effect shares |
+| `src/fx-panel.js` | the chains on screen — add, remove, reorder, bypass |
+
+**Analysis, and the imported recording**
+
+| | |
+|---|---|
+| `src/fft.js` | one Fourier transform, forward and inverse, for everything that needs one |
+| `src/wavetable.js` | band-limited tables: harmonic specs, the mip pyramid, Hermite playback |
 | `src/analysis.js` | the FFT, and what a voice's spectrum says about it |
 | `src/reference.js` | the imported recording — where it sits against the bars, and the monitor |
 | `src/spectrum-worker.js` | the STFT, folded onto the semitone axis, off the main thread |
@@ -194,38 +292,27 @@ arithmetic and import without a browser, plus the static server. See
 | `src/perf.js` | what the audio thread will admit about how hard it is working |
 | `src/analysis-panel.js` | the Scope panel and the header's load readout |
 | `src/views/scope-view.js` | the scope's three pictures - spectrum, one sweep frame, and the map |
-| `src/effects/limiter-dsp.js` | the limiter's arithmetic — delay line, sliding minimum, no Web Audio |
-| `src/effects/worklets/limiter-processor.js` | the audio-thread shell around it |
-| `src/effects/limiter.js` | the main-thread half: two fixed endpoints, and a processor spliced in late |
-| `src/audio.js` | the context, the bus chain, the clock, and the note accounting |
-| `src/master-strip.js` | the fader, the level and reduction meters, and the ceiling |
-| `src/effects.js` | the registry a chain names an effect from |
-| `src/effects/chain.js` | a row of effects between two endpoints that never move |
-| `src/effects/builtins.js` | the one line adding an effect costs |
-| `src/effects/filter.js` | multi-mode filter on native biquads, and the Q-in-decibels conversion |
-| `src/effects/compressor-dsp.js` | the compressor's arithmetic — gain computer, knee, ballistics |
-| `src/effects/compressor.js` | its main-thread half, and the shell in `worklets/compressor-processor.js` |
-| `src/effects/reverb-dsp.js` | the reverb's arithmetic — eight delay lines and a Hadamard matrix |
-| `src/effects/reverb.js` | its main-thread half, and the shell in `worklets/reverb-processor.js` |
-| `src/effects/delay-line.js` | a fractional ring buffer, a loop tone pair, and one soft clipper |
-| `src/effects/delay-dsp.js` | the tape delay's arithmetic — glide with a speed limit, wow in cents |
-| `src/effects/delay.js` | its main-thread half, and the shell in `worklets/delay-processor.js` |
-| `src/effects/chorus-dsp.js` | the chorus's arithmetic — one LFO, three taps, a bounded feedback path |
-| `src/effects/chorus.js` | its main-thread half, and the shell in `worklets/chorus-processor.js` |
-| `src/effects/drive-curve.js` | the four shaping curves, and what normalises them |
-| `src/effects/drive.js` | four native nodes: the shaper, a DC blocker, a tone lowpass, a trim |
-| `src/effects/worklet-effect.js` | the endpoint splice every worklet effect shares |
+
+**Shared vocabulary, storage and settings**
+
+| | |
+|---|---|
+| `src/music-theory.js` | pitch, scales, the duration lattice, snap sizes |
+| `src/params.js` | what a knob is, on its own — no imports, so it cannot be in a cycle |
 | `src/param-state.js` | building and checking a state from knob descriptors, for both registries |
 | `src/param-controls.js` | one knob as a control, for both panels |
-| `src/fx-panel.js` | the chains on screen — add, remove, reorder, bypass |
 | `src/decibels.js` | gain to dB and back, in one place instead of four |
 | `src/format.js` | how a knob's value is spelled out under it |
 | `src/observable.js` | the subscribe/notify pair, written once |
 | `src/worklet-loader.js` | loading a processor module once per context |
-| `src/demo-song.js` | the song a new browser opens with — a fixture, so it can be measured |
 | `src/theme.js` | reading the stylesheet's colours from code that draws on a canvas |
+| `src/storage.js` | localStorage, the autosave, and the document a song is saved as |
+| `src/save-panel.js` | the Songs panel — naming, listing, loading, deleting |
+| `src/demo-song.js` | the song a new browser opens with — a fixture, so it can be measured |
 | `src/settings.js` | the behaviours that are still open questions, defined in one place |
 | `src/options-panel.js` | the Options panel, built straight from those definitions |
+
+</details>
 
 ## Why things are the way they are
 
