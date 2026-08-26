@@ -1,0 +1,2984 @@
+:root {
+  color-scheme: dark;
+  --bg: #14161c;
+  --panel: #1c1f27;
+  --panel-border: #2c3040;
+  --text: #e8e9ee;
+  --text-dim: #9aa0b0;
+  --accent: #7dd3fc;
+  /* The cursor is where you are editing, the playhead is where the song is. They are usually
+     the same card while Follow playhead is on, so they are kept far apart in hue - you always
+     want to know which of the two signals you are looking at. */
+  --cursor: #c4b5fd;
+  --playhead: #38bdf8;
+  --grid-bar: rgba(255, 255, 255, 0.17);
+  --grid-beat: rgba(255, 255, 255, 0.08);
+  --grid-sub: rgba(255, 255, 255, 0.035);
+  --row-white: #191c24;
+  --row-black: #12141a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* --- header ------------------------------------------------------------------------------ */
+
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--panel-border);
+  flex: none;
+}
+
+.app-header__title h1 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.app-header__title p {
+  margin: 2px 0 0;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.app-header__controls {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.control {
+  display: flex;
+  flex-direction: column;
+  font-size: 11px;
+  color: var(--text-dim);
+  gap: 3px;
+}
+
+.control__label {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+/* What the tempo comes to in the meter you are actually in — a reading of the box beside it,
+   not a second control. */
+.control__hint {
+  font-style: normal;
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+
+.control input[type="number"] {
+  /* Room for a tempo with two decimals on it and the spinner beside it — a detected tempo is not a
+     whole number, and "128.00" clipped to "128.0" is a different tempo. */
+  width: 78px;
+}
+
+input:not([type="range"]),
+select,
+button {
+  font-family: inherit;
+  font-size: 13px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 5px 8px;
+}
+
+input[type="range"] {
+  accent-color: var(--accent);
+  width: 110px;
+}
+
+.btn {
+  cursor: pointer;
+  padding: 5px 11px;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.btn--primary {
+  border-color: #3a4a63;
+  background: #22304a;
+  color: var(--accent);
+}
+
+.btn--ghost {
+  background: transparent;
+}
+
+.btn--toggle.is-on {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(125, 211, 252, 0.12);
+}
+
+/* For rows of nudges, where the label is a number of milliseconds and there are five of them. */
+.btn--tiny {
+  padding: 2px 6px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.transport {
+  display: flex;
+  gap: 6px;
+}
+
+.transport .btn {
+  min-width: 38px;
+}
+
+.octave-control,
+.zoom-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 2px 6px;
+}
+
+.octave-control button,
+.zoom-control button {
+  border: none;
+  background: transparent;
+  padding: 2px 6px;
+  cursor: pointer;
+  color: var(--text-dim);
+}
+
+.octave-control button:hover,
+.zoom-control button:hover {
+  color: var(--accent);
+}
+
+.octave-control span,
+.zoom-control span {
+  font-size: 12px;
+  min-width: 62px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+/* --- dropdown panels --------------------------------------------------------------------- */
+
+.dropdown-control {
+  position: relative;
+}
+
+.dropdown-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 300px;
+  max-height: min(74vh, 640px);
+  overflow-y: auto;
+  padding: 14px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5);
+}
+
+.dropdown-panel[hidden] {
+  display: none;
+}
+
+/* The voice editor holds two columns instead of one, so it asks for the room to do it - but never
+   more than the window has, since the panel is anchored to a header button that may be near an edge
+   (see clampPanelToViewport). */
+.dropdown-panel--wide {
+  width: min(752px, calc(100vw - 24px));
+}
+
+/* The scope column is pinned to the canvas width rather than sized to its content. `auto` was the
+   obvious choice and collapsed the controls to zero pixels: the scope's explanatory paragraph has no
+   natural width, so max-content sizing let it ask for 704 of the 724 available and the sliders got
+   nothing. A canvas of a known size is the one thing here that genuinely has a right width. */
+.voice-editor {
+  --scope-width: 392px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--scope-width);
+  gap: 18px;
+  align-items: start;
+}
+
+.voice-editor__controls {
+  min-width: 0;
+}
+
+/* Pinned while the knobs scroll past it. The point of putting these together is to watch the
+   spectrum while your hand is on a control, and a scope that scrolls off the top the moment you
+   reach the envelope section would have missed it. Sticky inside the panel's own scroll box. */
+.voice-editor__scope {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  min-width: 0;
+}
+
+/* Narrow windows get one column, scope first: a 392px canvas beside a column of sliders needs about
+   750px, and below that the two would fight over the same pixels. Stacked it is still one panel and
+   still one gesture to reach both. */
+@media (max-width: 800px) {
+  .voice-editor {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .voice-editor__scope {
+    position: static;
+    order: -1;
+  }
+}
+
+.dropdown-panel h3 {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+.dropdown-panel__note {
+  margin: 0;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+#keys-panel {
+  width: 380px;
+}
+
+.keys-table {
+  border-collapse: collapse;
+  font-size: 11.5px;
+  width: 100%;
+}
+
+.keys-table th {
+  text-align: left;
+  font-weight: 400;
+  white-space: nowrap;
+  padding: 3px 10px 3px 0;
+  vertical-align: top;
+  width: 1%;
+}
+
+.keys-table td {
+  color: var(--text-dim);
+  padding: 3px 0;
+  line-height: 1.4;
+}
+
+kbd {
+  display: inline-block;
+  font-family: inherit;
+  font-size: 10.5px;
+  padding: 1px 5px;
+  border: 1px solid var(--panel-border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: #232733;
+}
+
+.synth-panel,
+.synth-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.synth-rows {
+  gap: 6px;
+}
+
+/* One instrument means the picker is a label pretending to be a control, so it is hidden - but
+   `display: grid` below beats the browser's own `[hidden] { display: none }`, and the row came
+   back with an empty dropdown in it. Anything that sets display has to say this itself. */
+.synth-row[hidden] {
+  display: none;
+}
+
+/* When the active part names its own notes — a drum kit does — the gutter stops being a keyboard
+   and becomes a list. The names have to fit a 62px gutter and a 13px row, so they are small and
+   never wrap; a wrapped label would push its own row out of alignment with the grid beside it. */
+.roll__key--named {
+  font-size: 8.5px;
+  letter-spacing: -0.015em;
+  white-space: nowrap;
+  overflow: hidden;
+  justify-content: flex-start;
+  padding-left: 4px;
+  color: var(--text);
+}
+
+/* Most of the roll is not a drum. Eleven rows out of eighty-four do something, so the rest recede
+   rather than pretending to be playable — a note placed there is legal, saved, and silent. */
+.roll--named .roll__row:not(.roll__row--named) {
+  opacity: 0.32;
+}
+
+.roll--named .roll__row--named {
+  background-image: linear-gradient(to right, rgba(125, 211, 252, 0.05), transparent 60%);
+}
+
+.synth-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* An instrument's own picture of itself. Only the wavetable has one so far; the panel hides this
+   entirely for instruments that declare no `display`. */
+.synth-display {
+  margin: 0;
+  padding: 6px 6px 4px;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.synth-display[hidden] {
+  display: none;
+}
+
+.synth-display canvas {
+  display: block;
+  width: 100%;
+}
+
+.synth-display figcaption {
+  margin: 4px 2px 0;
+  color: var(--text-dim);
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+.synth-presets .btn {
+  padding: 3px 9px;
+  font-size: 10.5px;
+}
+
+.synth-row {
+  display: grid;
+  grid-template-columns: 96px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.synth-row label {
+  color: var(--text-dim);
+}
+
+.synth-row select {
+  grid-column: 2 / span 2;
+  width: 100%;
+}
+
+.synth-row input[type="range"] {
+  width: 100%;
+}
+
+.synth-row__value {
+  font-variant-numeric: tabular-nums;
+  min-width: 44px;
+  text-align: right;
+  color: var(--text);
+}
+
+/* A knob that currently does nothing - a filter's Gain on a low pass, a delay's Milliseconds when it
+   is synced. Faded rather than removed: the row keeps its place, and the setting that made it inert is
+   usually the one just above it. The value stays legible on purpose, because it is what the knob will
+   mean again the moment you change that setting back. */
+.synth-row--inactive {
+  opacity: 0.42;
+}
+
+.synth-row--inactive input[type="range"] {
+  cursor: not-allowed;
+}
+
+/* --- the modulation matrix ------------------------------------------------------------------- */
+
+.mod-matrix {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 10px;
+  margin-top: 4px;
+  border-top: 1px solid var(--panel-border);
+}
+
+/* Third time: setting `display` overrides the browser's `[hidden] { display: none }`. An instrument
+   with nothing to modulate would otherwise show an empty Modulation heading and an Add button. */
+.mod-matrix[hidden] {
+  display: none;
+}
+
+.mod-matrix__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.btn--small {
+  padding: 2px 8px;
+  font-size: 10.5px;
+}
+
+.mod-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Two lines per routing: what goes where on the first, how much on the second.
+   One line was the obvious layout and did not fit - six columns in a 280px panel truncated the two
+   selects to "Envelo" and "Filter c", which is precisely the information a routing exists to convey.
+   The faint panel behind each one is what keeps two lines reading as one thing. */
+.mod-row {
+  display: grid;
+  /* Not an even split: destination names run longer than source names ("Filter resonance" against
+     "Envelope 2"), and at 1fr each the destination was the one that got cut - by 5px, which is the
+     most annoying amount. */
+  grid-template-columns: minmax(0, 0.8fr) auto minmax(0, 1.2fr) auto;
+  grid-template-areas:
+    "source arrow target remove"
+    "depth depth depth value";
+  align-items: center;
+  gap: 4px 5px;
+  font-size: 11px;
+  padding: 5px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.028);
+}
+
+.mod-row select {
+  min-width: 0;
+  width: 100%;
+  font-size: 10.5px;
+}
+
+.mod-row > select:first-child {
+  grid-area: source;
+}
+
+.mod-row > select:nth-of-type(2) {
+  grid-area: target;
+}
+
+.mod-row input[type="range"] {
+  grid-area: depth;
+  width: 100%;
+  min-width: 0;
+}
+
+.mod-row__arrow {
+  grid-area: arrow;
+  color: var(--text-dim);
+}
+
+.mod-row__value {
+  grid-area: value;
+  font-variant-numeric: tabular-nums;
+  min-width: 52px;
+  text-align: right;
+  color: var(--text);
+}
+
+.mod-row__remove {
+  grid-area: remove;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.mod-row__remove:hover {
+  color: var(--text);
+}
+
+.mod-empty {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.mod-empty[hidden] {
+  display: none;
+}
+
+.options-group + .options-group {
+  border-top: 1px solid var(--panel-border);
+  padding-top: 12px;
+}
+
+.options-group__label {
+  font-size: 12px;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
+.options-group__help {
+  margin: 0 0 6px;
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
+.options-choices {
+  display: flex;
+  font-size: 11px;
+  color: var(--text-dim);
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.options-choice {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.options-choice input {
+  accent-color: var(--accent);
+  margin: 0;
+}
+
+.options-group__detail {
+  margin: 5px 0 0;
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--text-dim);
+  opacity: 0.8;
+}
+
+/* --- scope: spectrum panel and the always-on load readout ---------------------------------- */
+
+#analysis-panel {
+  width: 420px;
+}
+
+.analysis {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.analysis__controls {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.analysis__controls select {
+  flex: 1;
+}
+
+/* Says that the display keeps itself current. It brightens while a measurement is actually running,
+   which is the only feedback a quiet re-measure gives - and at a few milliseconds a render it is
+   usually a blink, which is the right amount of noise for something happening constantly. */
+.analysis__live {
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  opacity: 0.55;
+  transition: opacity 120ms ease, color 120ms ease;
+}
+
+.analysis.is-measuring .analysis__live {
+  opacity: 1;
+  color: var(--accent);
+}
+
+.analysis__views {
+  display: flex;
+  gap: 4px;
+}
+
+.analysis__views .btn {
+  flex: 1;
+  padding: 3px 0;
+  font-size: 10.5px;
+}
+
+/* The colour scale. A heatmap encodes its values in colour, so without this the picture is
+   pretty and unreadable — there is no axis to check a brightness against. */
+/* Same trap as .synth-row: setting `display` overrides the browser's own
+   `[hidden] { display: none }`, so anything that sets it has to opt back in. The scale reappeared
+   under the Sweep view, labelling a colour that view does not use. */
+.analysis__scale[hidden] {
+  display: none;
+}
+
+.analysis__scale {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 9.5px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.analysis__scale i {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(
+    to right,
+    #10121a,
+    #16263a,
+    #1b3f5e,
+    #1e5c85,
+    #2a7ea9,
+    #4aa3c9,
+    #7dd3fc,
+    #c9edff,
+    #f0faff
+  );
+}
+
+.analysis__canvas {
+  display: block;
+  width: 100%;
+  /* The canvas carries an inline width in CSS pixels, because its backing store is sized against
+     devicePixelRatio in JS and the two have to agree. A max-width still constrains that, which keeps
+     it inside a panel narrower than the plot instead of hanging out of one - a squashed plot on a
+     window too small to hold a piano roll anyway, rather than a clipped one. */
+  max-width: 100%;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  background: #10121a;
+}
+
+.analysis__stats {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.analysis__stat {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.analysis__stat strong {
+  color: var(--text);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.analysis__stat.is-warn strong {
+  color: #fca5a5;
+}
+
+.load-meter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+}
+
+.load-meter__bar {
+  position: relative;
+  width: 46px;
+  height: 6px;
+  border-radius: 3px;
+  background: #232733;
+  overflow: hidden;
+}
+
+.load-meter__bar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  background: var(--accent);
+  transition: width 120ms linear;
+}
+
+.load-meter.is-warn .load-meter__bar i {
+  background: #fbbf24;
+}
+
+.load-meter.is-hot .load-meter__bar i {
+  background: #f87171;
+}
+
+.load-meter__text {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+  min-width: 34px;
+}
+
+.load-meter.is-hot .load-meter__text {
+  color: #fca5a5;
+}
+
+/* --- songs panel -------------------------------------------------------------------------- */
+
+.save-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.save-form {
+  display: flex;
+  gap: 6px;
+}
+
+.save-form input {
+  flex: 1;
+  min-width: 0;
+}
+
+.save-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.save-row {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.save-row__open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  text-align: left;
+  cursor: pointer;
+  padding: 5px 8px;
+}
+
+.save-row__open:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.save-row__open:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* The song you are in, so a panel full of near-identical names still says where you are. */
+.save-row--current .save-row__open {
+  border-color: var(--cursor);
+}
+
+.save-row__name {
+  font-size: 12px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.save-row__meta {
+  font-size: 10px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.save-row__delete {
+  flex: none;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-dim);
+  padding: 0 8px;
+}
+
+.save-row__delete:hover {
+  color: #fca5a5;
+  border-color: #7f3d3d;
+}
+
+.save-row__delete.is-armed {
+  color: #fca5a5;
+  border-color: #7f3d3d;
+  background: rgba(127, 61, 61, 0.25);
+}
+
+.save-export {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--panel-border);
+}
+
+.save-export__note {
+  font-size: 11px;
+  color: var(--text-dim);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.save-empty,
+.save-status {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.save-status:empty {
+  display: none;
+}
+
+.save-status {
+  color: var(--accent);
+}
+
+/* --- body layout -------------------------------------------------------------------------- */
+
+.app-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
+}
+
+.workspace {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.workspace__rack {
+  flex: none;
+  border-bottom: 1px solid var(--panel-border);
+  background: #171a21;
+}
+
+.workspace__roll {
+  flex: 1;
+  min-height: 0;
+}
+
+/* The lane sits under the roll and takes only the height it needs, so the roll keeps the rest.
+   When the active part is not a kit the lane hides itself and this collapses to nothing. */
+.workspace__lane {
+  flex: none;
+}
+
+.lane {
+  border-top: 1px solid var(--panel-border);
+  background: #171a21;
+  padding: 6px 8px 8px;
+  max-height: 40vh;
+  overflow: auto;
+}
+
+.lane[hidden] {
+  display: none;
+}
+
+.lane__head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.lane__title {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.lane__hint {
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.lane__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+
+.lane__label {
+  flex: none;
+  width: 74px;
+  text-align: left;
+  font-size: 10px;
+  padding: 2px 5px;
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  background: #1c1f27;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.lane__label:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+/* The cells are a grid rather than a flex row so every column is the same width no matter how many
+   steps there are, and the bars stay aligned down the kit. */
+.lane__cells {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 2px;
+}
+
+.lane__cell {
+  height: 15px;
+  min-width: 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: #232733;
+  cursor: pointer;
+}
+
+/* Downbeats and beats, so sixteen identical squares are countable. */
+.lane__cell--bar {
+  background: #2c3141;
+  box-shadow: inset 1px 0 0 var(--panel-border);
+}
+
+.lane__cell--beat {
+  background: #282d3a;
+}
+
+.lane__cell:hover {
+  border-color: var(--accent);
+}
+
+/* Velocity is brightness. Three levels is what the click cycles through, and the difference
+   between them has to be readable at a glance across a whole bar. */
+.lane__cell.is-on {
+  background: var(--accent);
+}
+
+.lane__cell.is-ghost {
+  background: color-mix(in srgb, var(--accent) 30%, #232733);
+}
+
+.lane__cell.is-normal {
+  background: color-mix(in srgb, var(--accent) 65%, #232733);
+}
+
+.lane__cell.is-accent {
+  background: var(--accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.workspace__spiral {
+  flex: none;
+  width: 300px;
+  border-left: 1px solid var(--panel-border);
+  display: flex;
+}
+
+body[data-spiral-size="small"] .workspace__spiral {
+  width: 230px;
+}
+
+body[data-spiral-size="large"] .workspace__spiral {
+  width: 380px;
+}
+
+/* --- rack --------------------------------------------------------------------------------- */
+
+.rack {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 7px 10px;
+}
+
+.rack__track {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 6px 3px 3px;
+  border: 1px solid var(--panel-border);
+  border-radius: 7px;
+  background: var(--panel);
+}
+
+/* Only one part is editable at a time - the others are drawn as ghosts in the roll - so the
+   rack has to say which one loudly enough that a misplaced note is impossible to blame on it. */
+.rack__track--active {
+  border-color: var(--cursor);
+  box-shadow: inset 0 0 0 1px rgba(196, 181, 253, 0.35);
+}
+
+.rack__pick {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 5px;
+  font-size: 11px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.rack__track--active .rack__pick {
+  color: var(--bg);
+  background: var(--cursor);
+  border-color: var(--cursor);
+}
+
+.rack__name {
+  width: 96px;
+  padding: 3px 6px;
+  font-size: 12px;
+  background: transparent;
+  border-color: transparent;
+}
+
+.rack__name:focus {
+  background: var(--bg);
+  border-color: var(--panel-border);
+}
+
+.rack__count {
+  font-size: 10.5px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  min-width: 18px;
+  text-align: right;
+}
+
+.rack__mute,
+.rack__remove {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+  cursor: pointer;
+  background: transparent;
+}
+
+.rack__mute.is-on {
+  color: #fca5a5;
+  border-color: #7f3d3d;
+  background: rgba(252, 165, 165, 0.12);
+}
+
+.rack__remove:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+/* --- piano roll ---------------------------------------------------------------------------- */
+
+.roll {
+  height: 100%;
+  display: grid;
+  grid-template-columns: var(--gutter-w) 1fr;
+  /* Three rows: the ruler, the active part's fade lane, and the grid. The lane is a row of the roll
+     rather than a layer inside the canvas so that it cannot be scrolled away from vertically and
+     cannot be dragged over by a note gesture - it is furniture, like the ruler above it. */
+  grid-template-rows: var(--ruler-h) var(--lane-h) 1fr;
+  background: var(--bg);
+}
+
+.roll__corner {
+  border-right: 1px solid var(--panel-border);
+  border-bottom: 1px solid var(--panel-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #171a21;
+}
+
+.roll__corner-label {
+  font-size: 11px;
+  color: var(--cursor);
+  font-variant-numeric: tabular-nums;
+}
+
+.roll__ruler-view {
+  position: relative;
+  overflow: hidden;
+  border-bottom: 1px solid var(--panel-border);
+  background: #171a21;
+  cursor: text;
+}
+
+.roll__ruler {
+  position: relative;
+  height: 100%;
+  will-change: transform;
+}
+
+/* The ruler is two lanes, not one: bar numbers along the top, key flags along the bottom. They
+   used to share the full height, which was fine while no marker sat on beat 1 and hid the number
+   for bar 1 - and the song now opens with one there. */
+.roll__tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  padding-left: 4px;
+  font-size: 10px;
+  line-height: 15px;
+  color: var(--text-dim);
+  border-left: 1px solid var(--panel-border);
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A key change takes no time, so it gets no width: it is a flag pinned to the boundary where
+   the event happens, which is also where a key signature is drawn. */
+.roll__key-flag {
+  position: absolute;
+  top: 14px;
+  transform: translateX(-1px);
+  padding: 0 5px;
+  font-size: 10px;
+  line-height: 14px;
+  border-radius: 0 4px 4px 0;
+  border-left: 2px solid var(--accent);
+  background: rgba(125, 211, 252, 0.15);
+  color: var(--accent);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* The active part, at the roll's own scale: the box is the region, its corners are the fades, and a
+   bar in it is exactly as wide as a bar below it. The rack's 112px copy of the same widget is the
+   summary; this is the one you can put a fade on the third beat with. */
+.roll__lane-view {
+  position: relative;
+  overflow: hidden;
+  border-bottom: 1px solid var(--panel-border);
+  background: #171a21;
+}
+
+.roll__lane {
+  position: relative;
+  height: 100%;
+  will-change: transform;
+}
+
+.roll__lane-corner {
+  border-right: 1px solid var(--panel-border);
+  border-bottom: 1px solid var(--panel-border);
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+  background: #171a21;
+  overflow: hidden;
+}
+
+/* Whose fades these are. The roll edits one part at a time, and the lane is the one piece of furniture
+   that would otherwise be silent about which. */
+.roll__lane-label {
+  font-size: 10px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Two classes, because .fade-lane's own `position: relative` is one class and comes later in the
+   file - the roll's copy has to outrank it rather than tie with it. */
+.roll__lane .roll__fades {
+  position: absolute;
+  top: 3px;
+}
+
+/* There is room for it here, and at this scale the number is worth reading. */
+.roll__fades .fade-lane__read {
+  font-size: 9.5px;
+}
+
+/* Stronger than the rack's copy on both counts, and for the same reason the lane is taller: this box
+   is 3000px wide rather than 112, so the tint that reads as a shape at a glance in a rack row reads as
+   an empty rectangle here. The border does not wait for a fade to exist before saying which part you
+   are looking at. */
+.roll__lane .roll__fades {
+  border-color: rgba(125, 211, 252, 0.4);
+}
+
+.roll__lane .roll__fades .fade-lane__fill {
+  fill: rgba(125, 211, 252, 0.26);
+}
+
+.roll__keys-view {
+  overflow: hidden;
+  border-right: 1px solid var(--panel-border);
+  background: #171a21;
+}
+
+.roll__keys {
+  will-change: transform;
+}
+
+.roll__key {
+  height: var(--row-h);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.5);
+  background: #cfd3dd;
+  color: #4a4f5c;
+  font-size: 9px;
+  line-height: var(--row-h);
+  text-align: right;
+  padding-right: 5px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.roll__key--black {
+  background: #2a2e39;
+  color: var(--text-dim);
+  width: 68%;
+  border-bottom-color: transparent;
+}
+
+.roll__scroller {
+  overflow: auto;
+  position: relative;
+}
+
+.roll__canvas {
+  position: relative;
+  /* The roll is one big click target; a drag across it should move notes, not select the page
+     the way a text selection would. */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.roll__rows,
+.roll__grid,
+.roll__notes {
+  position: absolute;
+  inset: 0;
+}
+
+.roll__row {
+  height: var(--row-h);
+  background: var(--row-white);
+}
+
+.roll__row--black {
+  background: var(--row-black);
+}
+
+/* One line per octave, at the bottom of each B row, so the C rows read as the start of
+   something rather than as one more stripe. */
+.roll__row--octave {
+  border-top: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+.roll__grid {
+  pointer-events: none;
+}
+
+/* The imported recording's spectrum, under everything and clickable through. It is the size of the
+   *viewport* and translated to the scroll position, not the size of the song — see drawSpectrum in
+   piano-roll.js, where the reason is that a four-minute song at working zoom is wider than a canvas
+   will allocate. `will-change` because the transform moves on every scroll event and without it the
+   layer is repainted rather than composited. */
+.roll__spectrum {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  will-change: transform;
+}
+
+/* Bar and group lines are elements, not a gradient — see renderGrid in piano-roll.js. Bars are
+   the heavier of the two; the group line is the pulse inside the bar, and how many there are is
+   the only thing separating 3/4 from 6/8 on screen. */
+.roll__line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+}
+
+.roll__line--bar {
+  background: var(--grid-bar);
+}
+
+.roll__line--group {
+  background: var(--grid-beat);
+}
+
+/* The row the pitch cursor is on, carried across the whole width - this is the band the
+   spiral's white outline corresponds to, and without it the two halves of the screen have no
+   visible connection. */
+.roll__pitch-band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: var(--row-h);
+  background: rgba(196, 181, 253, 0.1);
+  border-top: 1px solid rgba(196, 181, 253, 0.28);
+  border-bottom: 1px solid rgba(196, 181, 253, 0.28);
+  pointer-events: none;
+}
+
+.roll__notes {
+  pointer-events: none;
+}
+
+.roll-note {
+  position: absolute;
+  height: calc(var(--row-h) - 1px);
+  border-radius: 3px;
+  background: hsl(var(--hue), 68%, 52%);
+  border: 1px solid hsl(var(--hue), 70%, 72%);
+  color: rgba(0, 0, 0, 0.72);
+  font-size: 9px;
+  line-height: calc(var(--row-h) - 3px);
+  padding-left: 4px;
+  overflow: hidden;
+  white-space: nowrap;
+  pointer-events: auto;
+  cursor: grab;
+  /* The trailing 7px resize the note; everything else moves it. Drawn rather than only felt,
+     since an invisible grip is a thing you find by accident. */
+  box-shadow: inset -7px 0 0 -6px rgba(0, 0, 0, 0.55);
+}
+
+/* Velocity, drawn as fill rather than as opacity.
+   Opacity would have been one line and reads wrong: a faded note looks like a note belonging to
+   another part, which is exactly what the ghost styling already means. A note that is solid for
+   its velocity and hollow above it says "quiet" instead of "elsewhere", and a run of hats becomes
+   a shape you can read across a bar. */
+.roll-note--soft {
+  background-image: linear-gradient(
+    to top,
+    hsl(var(--hue) 70% 62%) 0%,
+    hsl(var(--hue) 70% 62%) calc(var(--velocity, 1) * 100%),
+    hsl(var(--hue) 30% 30%) calc(var(--velocity, 1) * 100%),
+    hsl(var(--hue) 30% 30%) 100%
+  );
+}
+
+.roll-note--selected {
+  outline: 2px solid var(--cursor);
+  outline-offset: 0;
+  z-index: 2;
+}
+
+/* The other grip: the leading edge of a selected note that has something in front of it to slide
+   out of. Light where the resize grip is dark, because they do opposite things to the same note,
+   and only on a selected one — the pixels change meaning when the mark appears and not before.
+   Not on material that falls outside its part's region, which cannot be heard and so cannot slide. */
+.roll-note--selected.roll-note--can-slide:not(.roll-note--outside) {
+  box-shadow:
+    inset -7px 0 0 -6px rgba(0, 0, 0, 0.55),
+    inset 7px 0 0 -6px rgba(255, 255, 255, 0.72);
+}
+
+/* A slide, drawn as the line it is: from the pitch the note leaves to the pitch it arrives at,
+   laid across the time it takes to get there. One element, rotated — a diagonal painted into a box
+   with a gradient is a different thickness at every angle, and the angle here is whatever the
+   interval and the zoom happen to make it. See styleSlide in piano-roll.js.
+
+   The element is a band and the line is drawn down the middle of it, so there is something to grab:
+   the ramp is the only handle the duration has. */
+.roll-slide {
+  position: absolute;
+  height: 9px;
+  margin-top: -4.5px;
+  transform-origin: 0 50%;
+  pointer-events: auto;
+  cursor: ew-resize;
+  z-index: 3;
+}
+
+.roll-slide::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 2px;
+  margin-top: -1px;
+  border-radius: 1px;
+  background: hsl(var(--hue) 85% 72%);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+}
+
+/* In the parts you are not editing: visible, because it is part of what they play, and inert for
+   the same reason their notes are. */
+.roll-slide--ghost {
+  pointer-events: none;
+}
+
+.roll-slide--ghost::before {
+  background: hsl(var(--hue) 20% 44%);
+  box-shadow: none;
+}
+
+/* And in a repeated pass, on the same terms as the notes it belongs to: output rather than content.
+   The layer it is drawn into is already inert, so this is only about the palette. */
+.roll-slide--repeat::before {
+  background: hsl(var(--hue) 32% 40%);
+  box-shadow: none;
+}
+
+.roll-slide--repeat-active::before {
+  background: hsl(var(--hue) 50% 52%);
+}
+
+/* Everything in the parts you are not editing. Visible so you can write against them, inert so
+   a click always lands on the part the rack says you are in. */
+/* Material that falls past where its part stops. Kept on screen rather than hidden, because a note
+   vanishing when a region is shortened looks like data loss — it is still in the part, and moving
+   the end brings it back. Hollow and dashed says "here but not heard". */
+.roll-note--outside {
+  background: transparent !important;
+  background-image: none !important;
+  border-style: dashed;
+  border-color: hsl(var(--hue) 40% 45%);
+  color: transparent;
+  box-shadow: none;
+  opacity: 0.55;
+}
+
+.roll-note--ghost {
+  background: hsl(var(--hue), 22%, 30%);
+  border-color: hsl(var(--hue), 22%, 40%);
+  color: transparent;
+  pointer-events: none;
+  box-shadow: none;
+}
+
+.roll__cursor,
+.roll__playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.roll__cursor {
+  background: var(--cursor);
+  box-shadow: 0 0 6px rgba(196, 181, 253, 0.5);
+}
+
+.roll__cursor-cap {
+  position: absolute;
+  top: 0;
+  left: -3px;
+  width: 7px;
+  height: 7px;
+  background: var(--cursor);
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+
+.roll__playhead {
+  background: var(--playhead);
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.6);
+  z-index: 4;
+}
+
+.roll__playhead[hidden] {
+  display: none;
+}
+
+.roll__marquee {
+  position: absolute;
+  border: 1px solid var(--cursor);
+  background: rgba(196, 181, 253, 0.12);
+  pointer-events: none;
+  z-index: 3;
+}
+
+/* --- spiral panel ---------------------------------------------------------------------------- */
+
+/* Absorbing the chord palette makes this the only sidebar, and taller than the window on a
+   short screen - so it scrolls, and the spiral is allowed to give up height before the palette
+   does. */
+.spiral-panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: 10px 12px 12px;
+  gap: 8px;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.spiral-panel__header,
+.spiral-panel__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex: none;
+  flex-wrap: wrap;
+}
+
+/* The header must not reflow when the position readout changes, and it did.
+
+   `At 2|3.14 C Major (Ionian)` is as wide as its text, and that text changes length constantly -
+   `1|1` is 133px and `128|4.999` is 187px. The header wrapped, which put the octave control right
+   at the threshold: at the medium spiral size it sat on row one for short labels and row two for
+   long ones. Under Follow playhead the cursor moves every frame, so the label changed, the control
+   jumped rows, the header's height changed by 26px, and the spiral below was shoved down and back.
+   That is what read as the sidebar flashing.
+
+   The first fix pinned everything to one row and let the key name truncate instead. That traded a
+   flash for lost information, which is worse: at the small size the key disappeared completely,
+   and the key is not decoration - unkeyed, the spiral draws no scale shading at all.
+
+   So the reading is that at this width these two things do not fit on one line, and the layout
+   should stop asking whether they might. The readout takes a full row and the control takes the
+   next, at every size. The header's height is then the same whatever the text says, which is the
+   only property that actually matters here. It costs one row at the large size, where they would
+   have fitted. */
+.spiral-panel__header {
+  flex-wrap: wrap;
+}
+
+.spiral-panel__at {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 0 100%;
+}
+
+.spiral-panel__header .octave-control {
+  flex: none;
+}
+
+/* Still allowed to give way rather than push the control off the edge, in case a scale name ever
+   turns out longer than the sidebar - it just no longer has to, at any current size. */
+.spiral-panel__key {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.spiral-panel__label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+/* Wide enough for the longest label there is, so the key name beside it stops sliding left and
+   right on every frame of playback. Measured rather than guessed: at this size `999|4.999` renders
+   76.3px, so 78 covers a three-digit bar with the finest position it can be given. Tabular figures
+   stop the digits shuffling within that; the reserved width is what keeps the text after them
+   still. The first attempt at 74px looked right and left 4px of movement on the widest labels. */
+.spiral-panel__position {
+  font-size: 15px;
+  color: var(--cursor);
+  font-variant-numeric: tabular-nums;
+  min-width: 78px;
+  flex: none;
+}
+
+.spiral-panel__key {
+  font-size: 11px;
+  color: var(--accent);
+}
+
+.spiral-panel__key.is-unkeyed {
+  color: var(--text-dim);
+}
+
+/* Square, so the element's box is the drawing's box. An SVG stretched to fill a tall panel
+   still *looks* right - preserveAspectRatio centres it - but every pixel of the slack is
+   inside the element and maps onto some slot, which turns the empty space above the spiral
+   into a live click target. */
+.spiral-panel__stage {
+  flex: 0 1 auto;
+  width: 100%;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.spiral-panel__footer {
+  gap: 12px;
+}
+
+.spiral-panel__readout {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.spiral-panel__readout--wide {
+  flex: 1;
+  min-width: 0;
+}
+
+.spiral-panel__readout strong {
+  font-size: 13px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.spiral-panel__sounding.is-empty {
+  color: var(--text-dim);
+}
+
+/* --- the spiral itself ------------------------------------------------------------------------ */
+
+.spiral-view {
+  width: 100%;
+  height: 100%;
+  display: block;
+  /* Without this a drag across the spiral starts a native text selection instead of moving a
+     note, and the whole panel highlights blue. */
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+
+.view--readonly .note-hit {
+  pointer-events: none;
+}
+
+.turn-ring {
+  fill: none;
+  stroke: var(--panel-border);
+  stroke-dasharray: 1.5 3;
+  stroke-width: 0.75;
+}
+
+/* Slots are filled outlines, not stroked arcs - see slotShapePath. Their geometry (which
+   depends on each slot's own radius) and their colours are both set per slot from
+   spiral-view.js; all that's left here is what kind of thing they are. */
+.note-hit {
+  fill: transparent;
+  stroke: none;
+  pointer-events: fill;
+  cursor: pointer;
+}
+
+.note-track,
+.note-fill {
+  stroke: none;
+  pointer-events: none;
+}
+
+.note-slot--active .note-fill {
+  filter: drop-shadow(0 0 2.5px rgba(255, 255, 255, 0.55));
+}
+
+.note-slot--active .note-hit {
+  cursor: grab;
+}
+
+/* Where the keyboard is pointing. An outline rather than a fill, so it can sit on a lit slot
+   and an unlit one and mean the same thing on both. */
+.note-slot--cursor .note-track {
+  stroke: var(--cursor);
+  stroke-width: 1.4;
+  paint-order: stroke;
+}
+
+/* Where a dragged note would land if you let go now. */
+.note-slot--drag .note-track {
+  stroke: #fff;
+  stroke-width: 1.6;
+  paint-order: stroke;
+}
+
+/* Scale shading. Only applied once a key marker is in force, so an unkeyed spiral is
+   untouched: anything outside the scale drops back so the scale's shape stands out. The
+   tonic's own lift is a colour, not a filter - see SLOT_TINTS in views/common.js, which keeps
+   every unlit tier well clear of the vivid "lit" colour. */
+.note-slot--off-scale .note-track {
+  opacity: 0.3;
+}
+
+/* One hairline out through each angle a note sits on. non-scaling-stroke keeps it a true
+   hairline whatever size the spiral is drawn at. The stroke itself is a gradient (it fades out
+   towards the rim), so only the overall level lives here. */
+.note-spoke {
+  stroke-opacity: 0.3;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+/* Pitches sounding at the cursor in the parts you are not editing. Deliberately faint - they
+   are a reference for reading the interval, not something you can click. */
+.ghost-note {
+  fill: rgba(255, 255, 255, 0.5);
+  pointer-events: none;
+}
+
+/* --- key editor ---------------------------------------------------------------------------------- */
+
+/* The picket opened out. It was 240px of two dropdowns, and the thing it was choosing between -
+   a mode - is a shape rather than a word, so the panel had to get wide enough to draw thirteen of
+   them. It is now taller than most windows have room for, which is what the scroll is for: the
+   key you are in is at the top and stays legible on its own, and the chord list is what you scroll
+   to when you want it. */
+.key-editor {
+  position: fixed;
+  top: 132px;
+  z-index: 60;
+  width: 372px;
+  max-height: calc(100vh - 148px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5);
+}
+
+.key-editor[hidden] {
+  display: none;
+}
+
+.key-editor__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.key-editor__at {
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.key-editor__remove {
+  font-size: 11px;
+  padding: 3px 8px;
+  cursor: pointer;
+  color: var(--text-dim);
+  background: transparent;
+}
+
+.key-editor__remove:hover {
+  color: #fca5a5;
+  border-color: #7f3d3d;
+}
+
+/* The key you are in, at a size worth reading: the dial on the left, and everything the dial
+   cannot say - its name, its notes, and how far it reaches - on the right. */
+.key-editor__key {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.key-editor__dial {
+  flex: none;
+  width: 138px;
+  height: 138px;
+}
+
+.key-editor__summary {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  padding-top: 2px;
+}
+
+.key-editor__field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.key-editor__field select {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.key-editor__label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+.key-editor__name {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.key-editor__pitches {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.key-editor__note {
+  margin: 0;
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
+.key-editor__section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px solid var(--panel-border);
+  padding-top: 9px;
+}
+
+.key-editor__heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-dim);
+}
+
+.key-editor__filters {
+  margin-left: auto;
+  display: flex;
+  gap: 3px;
+}
+
+.key-editor__filter {
+  padding: 2px 7px;
+  font-size: 10px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-dim);
+  background: transparent;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.key-editor__filter:hover {
+  color: var(--text);
+}
+
+.key-editor__filter.is-current {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* --- mode chips ------------------------------------------------------------------------------ */
+
+/* Thirteen single turns of the spiral, side by side. Four to a row is what makes the comparison
+   work: Lydian sits next to Major, Dorian next to Phrygian, and a mode's shape is read off the
+   difference rather than off its name. */
+.key-editor__modes {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 3px;
+}
+
+.mode-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 2px 5px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.mode-chip:hover {
+  border-color: var(--panel-border);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* The one in force is a filled card rather than a brighter drawing - the drawing is already
+   saying something (which notes are in the mode) and a second meaning laid on the same ink would
+   collide with it. */
+.mode-chip.is-current {
+  border-color: var(--accent);
+  background: rgba(125, 211, 252, 0.12);
+}
+
+.mode-chip .scale-dial {
+  width: 100%;
+  max-width: 62px;
+}
+
+.mode-chip__label {
+  font-size: 9px;
+  line-height: 1.2;
+  text-align: center;
+  color: var(--text-dim);
+}
+
+.mode-chip:hover .mode-chip__label,
+.mode-chip.is-current .mode-chip__label {
+  color: var(--text);
+}
+
+/* --- the dial itself ------------------------------------------------------------------------- */
+
+.scale-dial {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.scale-dial__slot {
+  stroke: none;
+}
+
+/* Same fade the spiral gives an out-of-scale slot, for the same reason: the shape of what is in
+   the mode has to be what stands out. */
+.scale-dial__slot--outside {
+  opacity: 0.32;
+}
+
+.scale-dial__label {
+  font-size: 8.5px;
+  fill: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.scale-dial__label--tonic {
+  fill: var(--text);
+  font-weight: 600;
+}
+
+/* --- chords in the key ----------------------------------------------------------------------- */
+
+.key-editor__chords {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 2px;
+}
+
+/* The palette's chip, with a numeral over it. Same drawing, so a chord listed here and the same
+   chord pressed under the spiral are recognisably one object; what is different is the ring
+   underneath, which here is the mode rather than all twelve. */
+.chord-chip--in-key {
+  padding: 3px 1px 4px;
+  gap: 0;
+}
+
+.chord-chip__numeral {
+  font-size: 10px;
+  line-height: 1.2;
+  font-weight: 600;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.chord-chip--in-key .chord-chip__diagram {
+  max-width: 54px;
+}
+
+.chord-chip--in-key .chord-chip__label {
+  font-size: 9px;
+  color: var(--text);
+}
+
+/* Pitches the mode does not contain. Still drawn, because a chord's shape is only legible against
+   the whole circle, but small enough not to be read as part of the key. */
+.chord-chip__ghost--outside {
+  fill: var(--panel-border);
+  opacity: 0.45;
+}
+
+.key-editor__chord-note {
+  margin-top: 1px;
+}
+
+/* --- the pitch axis, drawn as a rainbow ---------------------------------------------------- */
+
+/* No black keys, no shapes: twelve even stripes, each the hue its pitch class has everywhere
+   else on screen. The landmark the keyboard gave away for free has to be drawn back in, which
+   is what the octave line and the C labels are doing. */
+.roll--rainbow .roll__key {
+  width: 100%;
+  background: hsl(var(--hue), 52%, 44%);
+  color: rgba(0, 0, 0, 0.75);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.35);
+  text-shadow: 0 1px 0 hsla(var(--hue), 60%, 70%, 0.5);
+}
+
+/* Far duller than the gutter. The rows only have to say which pitch class a lane is, quietly
+   enough that the notes on top of them stay the brightest thing in the roll. */
+.roll--rainbow .roll__row {
+  background: hsl(var(--hue), 20%, 9.5%);
+}
+
+/* Under a key, the same three tiers the spiral uses: in-scale rows keep their colour, the rest
+   fall back, and the tonic reads brightest. This is the whole point of giving up the keyboard -
+   the key can be drawn into the axis instead of being something you hold in your head. */
+.roll--rainbow .roll__key--off-key {
+  background: hsl(var(--hue), 12%, 22%);
+  color: rgba(255, 255, 255, 0.35);
+  text-shadow: none;
+}
+
+.roll--rainbow .roll__row--off-key {
+  background: #101218;
+}
+
+.roll--rainbow .roll__key--tonic {
+  background: hsl(var(--hue), 74%, 60%);
+  box-shadow: inset 3px 0 0 rgba(255, 255, 255, 0.9);
+}
+
+.roll--rainbow .roll__row--tonic {
+  background: hsl(var(--hue), 26%, 13.5%);
+}
+
+/* The piano gutter says nothing about the key on its own, so it gets the quiet version of the
+   same signal: out-of-scale rows recede in the grid, and the tonic keeps a marker. */
+.roll__row--off-key {
+  filter: brightness(0.72);
+}
+
+.roll__key--tonic {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.roll__key--cursor {
+  outline: 1px solid var(--cursor);
+  outline-offset: -1px;
+  background: var(--cursor);
+  color: var(--bg);
+}
+
+/* --- the selected note ------------------------------------------------------------------------ */
+
+/* The same border, padding and rhythm as the palette below it, because they are the same kind of
+   thing: a section of the sidebar about the note you are pointing at. */
+.note-tools {
+  flex: none;
+  border-top: 1px solid var(--panel-border);
+  padding-top: 10px;
+  margin-top: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.note-tools__header {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.note-tools__name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--accent);
+}
+
+.note-tools.is-empty .note-tools__name {
+  color: var(--text-dim);
+}
+
+.note-tools__where {
+  font-size: 10.5px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* One grid for both rows, so the two sliders begin and end at the same x whatever is in the first
+   column - a word on one row and a button on the other. Without it the slider lengths would differ
+   by the width of the label beside them, and two controls of different lengths read as two controls
+   with different ranges. */
+.note-tools__row {
+  display: grid;
+  grid-template-columns: 56px 1fr 42px;
+  align-items: center;
+  gap: 8px;
+}
+
+/* The global rule pins a range input at 110px; here the column decides. */
+.note-tools__row input[type="range"] {
+  width: 100%;
+  min-width: 0;
+}
+
+.note-tools__row input[type="range"]:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.note-tools__slide {
+  width: 100%;
+  padding: 3px 4px;
+  font-size: 11px;
+}
+
+.note-tools__value {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--text);
+}
+
+/* A slide that is off still shows its row, so the panel does not change height when you press the
+   toggle - and the word says which state it is in without anyone having to read the slider. */
+.note-tools__value.is-off {
+  color: var(--text-dim);
+}
+
+/* --- chord palette --------------------------------------------------------------------------- */
+
+.chord-tools {
+  flex: none;
+  border-top: 1px solid var(--panel-border);
+  padding-top: 10px;
+  margin-top: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chord-tools__header {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.chord-tools__root {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--accent);
+}
+
+.chord-tools__info {
+  margin-left: auto;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--text-dim);
+  cursor: pointer;
+  background: transparent;
+}
+
+.chord-tools__info[aria-expanded="true"] {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.chord-tools__note {
+  margin: 0;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+.chord-tools__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(66px, 1fr));
+  gap: 4px;
+}
+
+/* The diagram is the button. It is the same drawing it was as a reference, which is the point:
+   what you read and what you press are one object. */
+.chord-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 3px 2px 4px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.chord-chip:hover {
+  border-color: var(--panel-border);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.chord-chip:active {
+  border-color: var(--accent);
+}
+
+.chord-chip__diagram {
+  width: 100%;
+  max-width: 62px;
+  aspect-ratio: 1;
+}
+
+.chord-chip__label {
+  font-size: 9.5px;
+  color: var(--text-dim);
+  text-align: center;
+  line-height: 1.2;
+}
+
+.chord-chip:hover .chord-chip__label {
+  color: var(--text);
+}
+
+.chord-chip__ghost {
+  fill: var(--panel-border);
+}
+
+.chord-chip__line {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.6);
+  stroke-width: 1.2;
+  stroke-dasharray: 2 2;
+}
+
+/* Same guides the spiral draws, same treatment - see .note-spoke. */
+.chord-chip__spoke {
+  stroke-opacity: 0.3;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+/* --- repeats ------------------------------------------------------------------------------- */
+
+.roll__repeats {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Output, not content. Faint enough to read as "this is what will happen" rather than as more
+   notes to edit, and inert, since the thing to edit is the pass they were copied from. */
+.roll-note--repeat {
+  background: hsl(var(--hue), 30%, 26%);
+  border-color: hsl(var(--hue), 32%, 36%);
+  border-style: dashed;
+  color: transparent;
+  box-shadow: none;
+  pointer-events: none;
+}
+
+.roll-note--repeat-active {
+  background: hsl(var(--hue), 46%, 34%);
+  border-color: hsl(var(--hue), 50%, 48%);
+}
+
+/* Where one pass hands over to the next. Without these a repeated part is a wall of notes with
+   no visible period, which is exactly the thing the repeat count is meant to make legible. */
+.roll__repeat-rule {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 1px dashed rgba(125, 211, 252, 0.45);
+}
+
+.roll__repeat-rule::after {
+  content: attr(data-pass);
+  position: absolute;
+  top: 2px;
+  left: 3px;
+  font-size: 9px;
+  color: var(--accent);
+  opacity: 0.75;
+}
+
+/* --- stretch handle ------------------------------------------------------------------------- */
+
+/* Only shown with two or more notes selected: with one, the note's own resize grip is already
+   there and means something different. */
+.roll__stretch {
+  position: absolute;
+  width: 12px;
+  margin-left: -5px;
+  z-index: 5;
+  cursor: ew-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.roll__stretch[hidden] {
+  display: none;
+}
+
+.roll__stretch-grip {
+  width: 4px;
+  height: 100%;
+  min-height: 12px;
+  border-radius: 2px;
+  background: var(--cursor);
+  box-shadow: 0 0 6px rgba(196, 181, 253, 0.6);
+}
+
+.roll__stretch:hover .roll__stretch-grip {
+  background: #fff;
+}
+
+/* --- rack: repeat and voice ------------------------------------------------------------------ */
+
+/* Where a part sits in the song: the bar it comes in on, and how many bars it plays for. Two
+   steppers rather than one, because a single count could only ever say how long — which is why
+   every part used to start at bar 1. */
+.rack__region {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.rack__span {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  border: 1px solid var(--panel-border);
+  border-radius: 5px;
+  padding: 0 2px;
+}
+
+/* The two position steppers light up together, because "this part starts at bar 5 and runs for 8" is
+   one fact. The fades light themselves - see .fade-lane. */
+.rack__region.is-on .rack__span {
+  border-color: var(--accent);
+}
+
+.rack__span button {
+  border: none;
+  background: transparent;
+  padding: 1px 4px;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.rack__span button:hover:not(:disabled) {
+  color: var(--accent);
+}
+
+.rack__span button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.rack__span span {
+  font-size: 10.5px;
+  min-width: 18px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+}
+
+.rack__region.is-on .rack__span span {
+  color: var(--accent);
+}
+
+/* The pass count, which is a consequence of the span rather than something you set. Blank at ×1,
+   because "plays once" is the absence of repetition rather than a fact worth a label. */
+.rack__passes {
+  font-size: 9.5px;
+  min-width: 16px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.rack__voice {
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+
+/* A length with no name. Said plainly rather than dressed up as a fraction nobody can read. */
+.spiral-panel__new-length.is-custom,
+.spiral-panel__length.is-custom {
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+.resolution-control {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.resolution-control select {
+  min-width: 74px;
+}
+
+.resolution-control .btn {
+  padding: 5px 9px;
+  font-size: 12px;
+}
+
+/* --- master strip ------------------------------------------------------------------------------ */
+
+/* The end of the signal path: how loudly you are listening, how loud the mix is, and how much the
+   limiter is having to take off. Three readings of three different quantities, which is why they are
+   one block rather than three controls scattered along the header. */
+.master {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.master .control__label {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+}
+
+.master__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* The fader and the ceiling stack beside the meter rather than sitting in a row of their own, so the
+   whole strip is still two lines tall like every other control in the header. */
+.master__controls {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Wide and shallow, because that is what fits a header row and also what a real meter looks like:
+   the movement is out of sight and you see the top of the needle through a window. */
+.master__meter {
+  display: block;
+  width: 132px;
+  height: 44px;
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  background: var(--bg);
+  cursor: pointer;
+}
+
+/* Written with the type selector because the global `input[type="range"]` rule is an attribute
+   selector *and* a type, which outranks a lone class - so `.master__fader { width }` on its own
+   silently lost and the fader stayed 110px. */
+input[type="range"].master__fader {
+  width: 92px;
+}
+
+.master__ceiling {
+  font-size: 11px;
+  padding: 3px 4px;
+}
+
+/* How much gain the limiter is removing, in the same hue the reduction bar is drawn in - the number
+   and the bar are one reading and colour is what says so. Blank rather than "0.0" when nothing is
+   being taken off, because a limiter doing nothing is the normal state and not news. */
+.master__reduction {
+  font-style: normal;
+  color: #c4b5fd;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A sample above the ceiling, which with the limiter on never happens - so this is blank almost
+   always, and when it is not, it is the only thing in the header wearing a warning colour. */
+.master__over {
+  font-style: normal;
+  color: #fbbf24;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- fades ------------------------------------------------------------------------------------- */
+
+/* The part, as a box, with its two fades as the corners of it. This replaced two steppers reading
+   `in 2` and `out –`, which made you count clicks and then imagine the result - the argument is in
+   fade-lane.js. The whole box is the drag surface, hence one cursor across all of it.
+
+   Its width and height are set inline by the widget, because the same widget is drawn at two scales:
+   112px in a rack row, and the part's real width in the roll's lane. */
+.fade-lane {
+  position: relative;
+  flex: none;
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  background-color: #101218;
+  /* Bar lines, one per tile at the tile's right edge, counted from the part's own beginning - which is
+     where a fade is measured from. The step comes from JS because only it knows how many bars are in
+     the box, and it thins to every second or fourth bar when they crowd. */
+  background-image: linear-gradient(to right, transparent calc(100% - 1px), var(--grid-beat) 0);
+  background-size: var(--fade-tick, 0) 100%;
+  background-repeat: repeat-x;
+  cursor: ew-resize;
+  /* The drag is a pointer capture, so the browser must not claim the gesture as a scroll first. */
+  touch-action: none;
+}
+
+/* Room for the grips, which are centred on the two corners and therefore hang half over the edge.
+   That overhang is the point: a fade of nothing sits *on* the corner rather than near it. */
+.rack__track > .fade-lane {
+  margin: 0 5px;
+}
+
+.fade-lane.is-on {
+  border-color: var(--accent);
+}
+
+/* A part with no length yet - a new one, before anything is written into it - has nothing to fade, and
+   says so by going flat rather than by offering a control that would be clamped to zero. */
+.fade-lane.is-empty {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.fade-lane__plot {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* The level under the curve, tinted rather than solid: the shape is carried by the stroke, and a fill
+   strong enough to carry it on its own would make four of these in a column shout. */
+.fade-lane__fill {
+  fill: rgba(125, 211, 252, 0.19);
+}
+
+.fade-lane__line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.1;
+  stroke-linejoin: round;
+  opacity: 0.55;
+}
+
+.fade-lane.is-on .fade-lane__line {
+  opacity: 1;
+}
+
+/* The length in bars, over its own ramp, and only when there is a ramp wide enough to hold it. The
+   number is still there - it is just no longer the only thing on offer. */
+.fade-lane__read {
+  font-size: 7.5px;
+  fill: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.fade-lane.is-dragging .fade-lane__read {
+  fill: var(--accent);
+}
+
+.fade-lane__grip {
+  position: absolute;
+  top: 1px;
+  left: 0;
+  width: 7px;
+  height: 7px;
+  padding: 0;
+  transform: translateX(-50%);
+  border: 1px solid var(--panel-border);
+  border-radius: 2px;
+  background: var(--panel);
+  /* Every pointer gesture is handled by the box, which is the only thing that knows which corner you
+     were nearer to. These exist to be seen, and to be focused and driven from the keyboard. */
+  pointer-events: none;
+}
+
+.fade-lane.is-on .fade-lane__grip,
+.fade-lane:hover .fade-lane__grip {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.fade-lane__grip:focus-visible {
+  outline: 1px solid var(--cursor);
+  outline-offset: 1px;
+}
+
+/* --- rack: level ------------------------------------------------------------------------------- */
+
+/* Wider than the buttons around it, because it is now a decibel scale: 63dB of range across 54px was
+   1.2dB per pixel, which is coarse for the one control you nudge most. At 84px it is 0.75dB, and the
+   exact figure is in the tooltip for when that is not enough - the synth panel's copy of the same knob
+   is wider still. */
+input[type="range"].rack__level {
+  width: 84px;
+}
+
+/* --- effects ----------------------------------------------------------------------------------- */
+
+/* Two chains in one panel: the active part's, and the master's. The order in each list is part of the
+   sound, so it is drawn as an ordered list with the moves next to each entry rather than as a set of
+   boxes whose arrangement you have to infer. */
+.fx-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.fx-section {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.fx-section__heading {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.fx-section__heading h3 {
+  margin: 0;
+  font-size: 12px;
+}
+
+.fx-section__hint {
+  font-size: 10.5px;
+  color: var(--text-dim);
+  flex: 1;
+}
+
+.fx-add {
+  font-size: 11px;
+  padding: 2px 6px;
+}
+
+.fx-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.fx-slot {
+  border: 1px solid var(--panel-border);
+  border-radius: 7px;
+  padding: 6px 8px 8px;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* A bypassed effect stays in the list, faded, rather than vanishing - it still holds its settings and
+   its place in the order, and both are things you are about to switch back on. */
+.fx-slot--off {
+  opacity: 0.5;
+}
+
+.fx-slot__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fx-slot__name {
+  font-size: 11.5px;
+  color: var(--text);
+}
+
+/* What the effect is set to, in a few words, so a collapsed glance down the chain says something. */
+.fx-slot__summary {
+  flex: 1;
+  font-size: 10.5px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.fx-slot__power,
+.fx-slot__move,
+.fx-slot__remove {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  font-size: 10.5px;
+  line-height: 1;
+  color: var(--text-dim);
+  background: transparent;
+  cursor: pointer;
+}
+
+.fx-slot__power.is-on {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: rgba(125, 211, 252, 0.12);
+}
+
+.fx-slot__move:disabled,
+.fx-slot__remove:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.fx-slot__presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.fx-slot__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fx-empty {
+  margin: 0;
+  font-size: 10.5px;
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+
+/* --- the recording being transcribed ------------------------------------------------------- */
+
+/* Three columns and two rows above them. The columns are the declared controls, grouped by how
+   often you touch them rather than by what they do inside; the rows above are the two things that
+   are about the file itself rather than about how it is drawn — which one it is, and where it sits
+   against the bars. */
+.reference {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.reference__file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.reference__meta {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The bar has no width until there is something to report, so an idle panel is one line of text
+   rather than an empty progress bar implying something is stuck. */
+.reference__status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  min-height: 14px;
+}
+
+.reference__bar {
+  display: none;
+  width: 120px;
+  height: 4px;
+  border-radius: 2px;
+  background: #10131a;
+  overflow: hidden;
+}
+
+.reference__status--busy .reference__bar {
+  display: block;
+}
+
+.reference__bar-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 90ms linear;
+}
+
+.reference__status--error {
+  color: #fca5a5;
+}
+
+/* Alignment is a number box and five buttons rather than a slider, because lining a recording up
+   with a bar line is a millisecond job over a range of minutes and no taper holds both ends of
+   that. */
+.reference__align {
+  display: grid;
+  grid-template-columns: 40px 86px 1fr;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.reference__align input {
+  font-variant-numeric: tabular-nums;
+}
+
+.reference__nudges {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.reference__columns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.reference__column h4 {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* The label column is narrower here than in the synth panel: three sets of rows share the width one
+   set had, and "Rows / note" is the longest label any of them has. */
+.reference__column .synth-row {
+  grid-template-columns: 68px 1fr auto;
+  gap: 6px;
+}
+
+.reference__column .synth-row__value {
+  min-width: 38px;
+}
+
+.reference__note {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-dim);
+  border-top: 1px solid var(--panel-border);
+  padding-top: 8px;
+}
+
+/* The tempo box and the tap button, which are one control: the button writes into the box. */
+.bpm-control {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+/* Lit while a tap series is still open, so that a fifth tap visibly continues the four before it
+   rather than looking like the start of a new count. */
+#tap-tempo {
+  padding: 5px 8px;
+}
+
+.reference__detect {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-height: 24px;
+}
+
+.reference__candidates {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+/* A tempo and how well the recording actually fits it, in one chip. The match is dimmer because it
+   is the caveat, not the answer - you press the number. */
+.reference__candidate {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  border-color: #3a4a63;
+  color: var(--accent);
+}
+
+.reference__candidate em {
+  font-style: normal;
+  font-size: 9px;
+  opacity: 0.65;
+  color: var(--text-dim);
+}
+
+/* An empty rack, which is now a state you can get to: removing the last part is allowed. Says what
+   happened and how to undo it in words, because the alternative is a blank strip that reads as a
+   panel which failed to draw. */
+.rack__empty {
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+/* A file being dragged over the roll. The outline is inside the element rather than a border, so
+   nothing moves by a pixel when it appears. */
+.workspace.is-drop-target {
+  outline: 2px dashed var(--accent);
+  outline-offset: -4px;
+}

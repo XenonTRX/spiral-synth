@@ -1,0 +1,7 @@
+.DS_Store
+node_modules/
+
+# Claude Code keeps per-machine settings and scratch worktrees in here; the launch
+# config beside them is checked in on purpose.
+.claude/settings.local.json
+.claude/worktrees/

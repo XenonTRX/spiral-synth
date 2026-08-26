@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Spiral Synth — piano roll with a pitch-spiral editor</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="app-header__title">
+      <h1>Spiral Synth</h1>
+      <p>The roll says <em>when</em>. The spiral says <em>what</em>.</p>
+    </div>
+    <div class="app-header__controls">
+      <div class="control">
+        <span class="control__label">Transport</span>
+        <div class="transport">
+          <button id="play-btn" type="button" class="btn btn--primary" title="Play from the cursor (Space)">&#9654;</button>
+          <button id="stop-btn" type="button" class="btn btn--ghost" title="Stop (Space)" disabled>&#9632;</button>
+          <button id="loop-btn" type="button" class="btn btn--ghost btn--toggle" title="Loop the song (L)" aria-pressed="true">&#8635;</button>
+        </div>
+      </div>
+      <!-- A div rather than a label, because the Tap button lives in here now and a label forwards
+           its clicks to the field it names - so tapping would have kept stealing focus into the box. -->
+      <div class="control">
+        <span class="control__label">BPM <em id="pulse-hint" class="control__hint"></em></span>
+        <div class="bpm-control">
+          <!-- Two decimals, because a tempo taken from a recording is not a whole number and rounding
+               it to one is two beats of drift by the end of a four-minute song. -->
+          <input id="bpm" type="number" min="20" max="300" step="0.01" value="100" title="Quarter notes per minute, in every time signature — the reading beside it says what that comes to in the meter you are in" />
+          <button id="tap-tempo" class="btn btn--ghost btn--toggle" type="button" title="Tap the beat (T) — from the second tap on, this is the tempo you are tapping">Tap</button>
+        </div>
+      </div>
+      <label class="control">
+        Time
+        <select id="meter" title="How long a bar is and how it divides. Changing it moves the bar lines and renumbers the ruler — it moves no notes."></select>
+      </label>
+      <label class="control">
+        Snap
+        <select id="snap" title="Where a note's start is allowed to land"></select>
+      </label>
+      <div class="control">
+        <span class="control__label">Resolution</span>
+        <div class="resolution-control">
+          <select id="resolution" title="The finest position anything can land on — every length, and any start the snap grid didn't already place"></select>
+          <button id="align-song" class="btn btn--ghost" type="button" title="Pull every note already placed onto this resolution">Align</button>
+        </div>
+      </div>
+      <div class="control">
+        <span class="control__label">Zoom</span>
+        <div class="zoom-control">
+          <button type="button" id="zoom-out" title="Zoom out (−)">&minus;</button>
+          <span id="zoom-value"></span>
+          <button type="button" id="zoom-in" title="Zoom in (+)">+</button>
+        </div>
+      </div>
+      <div class="control" id="master-host"></div>
+      <div class="control">
+        <span class="control__label">Add</span>
+        <div class="transport">
+          <button id="add-track" class="btn btn--primary" type="button" title="Add a part that plays alongside the others">+ Part</button>
+          <button id="add-key" class="btn btn--ghost" type="button" title="Add a key change at the cursor">+ Key</button>
+        </div>
+      </div>
+      <div class="control dropdown-control">
+        <button id="toggle-songs" class="btn btn--ghost" type="button" title="Saved songs (&#8984;S)">Songs</button>
+        <div id="songs-panel" class="dropdown-panel" hidden></div>
+      </div>
+      <div class="control dropdown-control">
+        <button id="toggle-keys" class="btn btn--ghost" type="button" title="Keyboard shortcuts">Keys ?</button>
+        <div id="keys-panel" class="dropdown-panel" hidden>
+          <h3>Horizontal is time, vertical is pitch</h3>
+          <table class="keys-table">
+            <tbody>
+              <tr><th><kbd>Space</kbd></th><td>play / stop, from the cursor</td></tr>
+              <tr><th><kbd>&larr;</kbd> <kbd>&rarr;</kbd></th><td>move the cursor one snap step (<kbd>&#8679;</kbd> to the next bar line)</td></tr>
+              <tr><th><kbd>&uarr;</kbd> <kbd>&darr;</kbd></th><td>move the pitch cursor a semitone (<kbd>&#8679;</kbd> an octave)</td></tr>
+              <tr><th><kbd>Enter</kbd></th><td>make or remove a note where the two cursors cross</td></tr>
+              <tr><th><kbd>Tab</kbd></th><td>next note in this part (<kbd>&#8679;</kbd> previous)</td></tr>
+              <tr><th><kbd>,</kbd> <kbd>.</kbd></th><td>softer / harder — velocity of the selected notes</td></tr>
+              <tr><th><kbd>S</kbd></th><td>slide — the selected notes arrive from the pitch struck before them</td></tr>
+              <tr><th><kbd>&#8997;</kbd><kbd>&larr;</kbd> <kbd>&#8997;</kbd><kbd>&rarr;</kbd></th><td>move the selected notes in time</td></tr>
+              <tr><th><kbd>&#8997;</kbd><kbd>&uarr;</kbd> <kbd>&#8997;</kbd><kbd>&darr;</kbd></th><td>transpose the selected notes</td></tr>
+              <tr><th><kbd>[</kbd> <kbd>]</kbd></th><td>shorter / longer by one snap step — the selection, or the next note if nothing is selected</td></tr>
+              <tr><th><kbd>&#8997;</kbd><kbd>[</kbd> <kbd>&#8997;</kbd><kbd>]</kbd></th><td>stretch the selection in time — double-time / half-time, lengths and gaps together</td></tr>
+              <tr><th><kbd>D</kbd></th><td>duplicate the selection, one selection-width later</td></tr>
+              <tr><th><kbd>&#9003;</kbd></th><td>delete the selection</td></tr>
+              <tr><th><kbd>Home</kbd> <kbd>End</kbd></th><td>start / end of the song</td></tr>
+              <tr><th><kbd>1</kbd>&hellip;<kbd>9</kbd></th><td>edit that part</td></tr>
+              <tr><th><kbd>M</kbd> <kbd>L</kbd> <kbd>F</kbd></th><td>mute this part · loop · follow playhead</td></tr>
+              <tr><th><kbd>T</kbd></th><td>tap the tempo — four taps is usually enough</td></tr>
+              <tr><th><kbd>&#8984;Z</kbd></th><td>undo (<kbd>&#8679;&#8984;Z</kbd> redo)</td></tr>
+              <tr><th><kbd>&#8984;S</kbd></th><td>keep this song under its name — everything is autosaved anyway</td></tr>
+              <tr><th><kbd>&minus;</kbd> <kbd>+</kbd></th><td>zoom out / in</td></tr>
+            </tbody>
+          </table>
+          <p class="dropdown-panel__note">
+            With the mouse: drag a note to move it, drag its trailing edge to retime it, drag empty
+            space to marquee-select, double-click empty space to make a note and a note to delete it.
+            <strong>&#8997;-drag</strong> a note up or down for how hard it is struck. A selected note
+            with something in front of it grows a second grip at its <em>leading</em> edge: drag that
+            out and it slides into its pitch instead of starting on it &mdash; the ramp you pull out
+            is how long the slide takes, and dragging it back to the note's start takes it off.
+            None of that needs a key: select a single note and the <strong>Note</strong> panel under
+            the spiral holds the same two settings as a slider and a button.
+            Select two or more notes and a stretch handle appears at the end of the selection —
+            drag it to scale the passage in time. Lengths are free, but everything lands on the
+            <strong>Resolution</strong> grid (a 1/64 by default), and <strong>Align</strong> pulls
+            notes placed earlier onto it. <strong>Time</strong> sets how long a bar is and how it
+            divides — it moves the bar lines and the <em>Bar</em> and <em>Beat</em> snaps, and
+            moves no notes. On the spiral, click a slot to make or remove a
+            note at the cursor and drag one to move it round; press a chord chip under it to build
+            that chord on the cursor, or on the selected note if there is exactly one.
+          </p>
+        </div>
+      </div>
+      <div class="control dropdown-control">
+        <button id="toggle-synth" class="btn btn--ghost" type="button" title="This part's voice, and what it measures">Synth &#9881;</button>
+        <!-- The controls and the scope in one panel, because they are one activity: you turn a knob
+             to change a sound, and the only way to see what you changed is to measure it. Two
+             buttons meant opening one closed the other, so the picture and the thing it was a
+             picture of were never on screen together. -->
+        <div id="synth-panel" class="dropdown-panel dropdown-panel--wide" hidden>
+          <div class="voice-editor">
+            <div id="voice-controls" class="voice-editor__controls"></div>
+            <div id="voice-scope" class="voice-editor__scope"></div>
+          </div>
+        </div>
+      </div>
+      <div class="control dropdown-control">
+        <button id="toggle-fx" class="btn btn--ghost" type="button" title="Effects on this part, and on everything">FX &#9881;</button>
+        <!-- Two chains in one panel, because they are the same object twice - a part's inserts, and
+             the master's. The order in each list is part of the sound, so it is a list you can move
+             things around in rather than a set of boxes. -->
+        <div id="fx-panel" class="dropdown-panel dropdown-panel--wide" hidden></div>
+      </div>
+      <div class="control dropdown-control">
+        <button id="toggle-reference" class="btn btn--ghost btn--toggle" type="button" title="Import a recording and lay its spectrum under the roll, for transcribing">Reference &#9835;</button>
+        <!-- The recording being transcribed: a picture of it behind the notes, and the same audio
+             playing alongside them. One panel, because the alignment that puts a transient under a
+             bar line is the same number that says where the monitor starts. -->
+        <div id="reference-panel" class="dropdown-panel dropdown-panel--wide" hidden></div>
+      </div>
+      <div class="control dropdown-control">
+        <button id="toggle-options" class="btn btn--ghost" type="button" title="Behaviour options">Options &#9881;</button>
+        <div id="options-panel" class="dropdown-panel" hidden></div>
+      </div>
+      <div class="control">
+        <span class="control__label">Audio</span>
+        <div id="load-host"></div>
+      </div>
+    </div>
+  </header>
+
+  <div class="app-body">
+    <main class="workspace">
+      <div id="rack-host" class="workspace__rack"></div>
+      <div id="roll-host" class="workspace__roll"></div>
+      <div id="lane-host" class="workspace__lane"></div>
+    </main>
+    <aside id="spiral-host" class="workspace__spiral"></aside>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

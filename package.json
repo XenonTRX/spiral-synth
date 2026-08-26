@@ -1,0 +1,13 @@
+{
+  "name": "spiral-synth",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A browser DAW built around a chromatic pitch-spiral: the roll says when, the spiral says what.",
+  "type": "module",
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js",
+    "test": "node --test tests/"
+  },
+  "license": "MIT"
+}
