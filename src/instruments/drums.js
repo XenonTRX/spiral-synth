@@ -81,7 +81,23 @@ export const DRUM_PARAMS = [
   numberParam({ key: 'cymbalLevel', label: 'Cymbal level', min: 0, max: 1.5, def: 0.55, step: 0.01, format: pct }),
   numberParam({ key: 'rimLevel', label: 'Rim level', min: 0, max: 1.5, def: 0.7, step: 0.01, format: pct }),
 
-  levelParam({ label: 'Kit level' }),
+  numberParam({
+    key: 'cowTune',
+    label: 'Cowbell tune',
+    min: 300,
+    max: 900,
+    def: 540,
+    step: 1,
+    help: 'The lower of its two oscillators. The other one tracks it a fraction under a fifth above, which is the interval that keeps the pair from fusing into a note.',
+    format: hz,
+  }),
+  numberParam({ key: 'cowDecay', label: 'Cowbell decay', min: 0.05, max: 1.5, def: 0.4, step: 0.01, format: ms }),
+  numberParam({ key: 'cowLevel', label: 'Cowbell level', min: 0, max: 1.5, def: 0.6, step: 0.01, format: pct }),
+
+  levelParam({
+    label: 'Kit level',
+    help: 'Anything routed here is retriggered by every hit and scales that hit — so an LFO is plainly audible on a ringing cymbal or open hat and barely moves a 40ms kick, and Env 2 is a shaper for the hit itself. Note pitch reads as "which drum", since these are General MIDI numbers rather than pitches.',
+  }),
 ];
 
 /**
@@ -111,6 +127,7 @@ const PRESETS = [
       snareTune: 178, snareDecay: 0.16, snareSnap: 0.55, snareLevel: 0.8,
       clapDecay: 0.3, hatTone: 1, hatClosedDecay: 0.05, hatOpenDecay: 0.55, hatLevel: 0.62,
       tomTune: 0.85, tomDecay: 0.7, cymbalDecay: 2.6, cymbalLevel: 0.5,
+      cowTune: 512, cowDecay: 0.5, cowLevel: 0.62,
     },
   },
   {
@@ -120,6 +137,7 @@ const PRESETS = [
       snareTune: 210, snareDecay: 0.22, snareSnap: 0.72, snareLevel: 0.9,
       clapDecay: 0.2, hatTone: 1.14, hatClosedDecay: 0.045, hatOpenDecay: 0.35, hatLevel: 0.75,
       tomTune: 1.05, tomDecay: 0.42, cymbalDecay: 1.5, cymbalLevel: 0.6,
+      cowTune: 555, cowDecay: 0.34, cowLevel: 0.6,
     },
   },
   {
@@ -129,6 +147,7 @@ const PRESETS = [
       snareTune: 240, snareDecay: 0.11, snareSnap: 0.8, snareLevel: 0.85,
       clapDecay: 0.13, hatTone: 1.3, hatClosedDecay: 0.028, hatOpenDecay: 0.2, hatLevel: 0.7,
       tomTune: 1.2, tomDecay: 0.28, cymbalDecay: 0.9, cymbalLevel: 0.45,
+      cowTune: 640, cowDecay: 0.16, cowLevel: 0.55,
     },
   },
   {
@@ -138,6 +157,7 @@ const PRESETS = [
       snareTune: 160, snareDecay: 0.42, snareSnap: 0.45, snareLevel: 0.8,
       clapDecay: 0.5, hatTone: 0.82, hatClosedDecay: 0.09, hatOpenDecay: 0.9, hatLevel: 0.6,
       tomTune: 0.7, tomDecay: 1.1, cymbalDecay: 3.6, cymbalLevel: 0.55,
+      cowTune: 430, cowDecay: 0.78, cowLevel: 0.6,
     },
   },
 ];
@@ -179,7 +199,7 @@ export default defineInstrument({
   // truncates the crash at the end of an exported song.
   tailSeconds: (state) => Math.max(
     state.kickDecay, state.snareDecay, state.clapDecay,
-    state.hatOpenDecay, state.tomDecay, state.cymbalDecay,
+    state.hatOpenDecay, state.tomDecay, state.cymbalDecay, state.cowDecay,
   ) * 1.6,
 
   prepare: (ctx) => ensureModule(ctx).promise,

@@ -16,10 +16,16 @@
 // inches of screen, and if they are not, the prototype has failed at the only thing it exists
 // to check.
 
-import { CHORD_TYPES, noteName, octaveFromMidi, pcFromMidi } from './music-theory.js';
-import { buildChord, chordRoot } from './edits.js';
+import { CHORD_TYPES, noteName, octaveFromMidi, pcFromMidi, secondsForBeats } from './music-theory.js';
+import { buildChord, chordRoot, strumSelection } from './edits.js';
 import { buildChordDiagram } from './views/chord-diagram.js';
 import { CHANGE } from './song.js';
+import { MAX_SPREAD, MIN_SPREAD, getStrumSpread, setStrumSpread, subscribeStrum } from './strum.js';
+
+// The slider's own unit. A strum's whole range is a 1/256 to a 1/16 of a whole note, which is 9ms to
+// 150ms at 100bpm, so counting in 1/256ths gives thirty-one positions half a step apart - fine enough
+// that no setting is out of reach and coarse enough that every position is a different gesture.
+const SPREAD_UNIT = 256;
 
 export function createChordTools({ song, getBpm }) {
   const element = document.createElement('section');
@@ -39,12 +45,32 @@ export function createChordTools({ song, getBpm }) {
       start and length.
     </p>
     <div class="chord-tools__grid"></div>
+    <div class="chord-tools__strum">
+      <span class="spiral-panel__label">Strum</span>
+      <div class="chord-tools__strokes">
+        <button type="button" class="btn btn--ghost btn--small chord-tools__strum-up">&uarr;</button>
+        <button type="button" class="btn btn--ghost btn--small chord-tools__strum-down">&darr;</button>
+      </div>
+      <input
+        type="range"
+        class="chord-tools__spread"
+        min="${MIN_SPREAD * SPREAD_UNIT}"
+        max="${MAX_SPREAD * SPREAD_UNIT}"
+        step="0.5"
+        aria-label="How far apart a strum spaces the notes"
+      />
+      <output class="chord-tools__spread-value"></output>
+    </div>
   `;
 
   const rootEl = element.querySelector('.chord-tools__root');
   const grid = element.querySelector('.chord-tools__grid');
   const note = element.querySelector('.chord-tools__note');
   const info = element.querySelector('.chord-tools__info');
+  const strumUp = element.querySelector('.chord-tools__strum-up');
+  const strumDown = element.querySelector('.chord-tools__strum-down');
+  const spread = element.querySelector('.chord-tools__spread');
+  const spreadValue = element.querySelector('.chord-tools__spread-value');
 
   info.addEventListener('click', () => {
     note.hidden = !note.hidden;
@@ -67,9 +93,38 @@ export function createChordTools({ song, getBpm }) {
     return { chord, chip };
   });
 
+  // The two strokes, and how wide they are.
+  //
+  // Here rather than in the Note panel above, which is deliberately about exactly one note: a strum is
+  // the one edit that is *only* meaningful on several, and this is the panel about chords. It is also
+  // where a chord comes from - press a chip, get a chord already selected, strum it - so the gesture
+  // and the thing it acts on are two controls apart.
+  strumUp.addEventListener('click', () => strumSelection(song, 1, getBpm()));
+  strumDown.addEventListener('click', () => strumSelection(song, -1, getBpm()));
+  spread.addEventListener('input', () => setStrumSpread(Number(spread.value) / SPREAD_UNIT));
+
+  /** How wide the stroke is, and whether there is anything to use it on. */
+  function renderStrum() {
+    const width = getStrumSpread();
+    // Not while it is the thing being dragged: writing a value back into a range input mid-drag makes
+    // the knob fight the hand holding it - the same rule the synth panel and the Note panel keep.
+    if (document.activeElement !== spread) spread.value = String(width * SPREAD_UNIT);
+    spreadValue.textContent = `${Math.round(secondsForBeats(width, getBpm()) * 1000)}ms`;
+    const count = song.getSelection().size;
+    const enough = count >= 2;
+    strumUp.disabled = !enough;
+    strumDown.disabled = !enough;
+    const how = enough
+      ? `${count} selected notes, ${Math.round(secondsForBeats(width, getBpm()) * 1000)}ms apart`
+      : 'select two or more notes first';
+    strumUp.title = `Play the chord upwards — the lowest note first (G). ${how}`;
+    strumDown.title = `Play the chord downwards — the highest note first (⇧G). ${how}`;
+  }
+
   // The chips are static drawings, but what they would *do* moves with the cursor, so the
   // header names the root and each chip's tooltip spells the chord out in real note names.
   function render() {
+    renderStrum();
     const root = chordRoot(song);
     const name = (midi) => noteName(octaveFromMidi(midi), pcFromMidi(midi));
     rootEl.textContent = name(root.midi);
@@ -83,6 +138,8 @@ export function createChordTools({ song, getBpm }) {
   song.subscribe((kind) => {
     if (kind === CHANGE.CURSOR || kind === CHANGE.SELECTION || kind === CHANGE.NOTES) render();
   });
+  // The spread is not part of the song, so nothing above would announce it moving.
+  subscribeStrum(renderStrum);
   render();
 
   return { element, refresh: render };

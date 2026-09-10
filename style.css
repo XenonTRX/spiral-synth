@@ -981,6 +981,9 @@ kbd {
   gap: 2px;
 }
 
+/* A flex row of boxes rather than one filled square, because a cell has to be able to draw two, three
+   or four hits in the time it owns. The cell keeps the ground - the bar and beat shading below - and
+   the hits sit on it, so an empty cell is one transparent box and looks exactly as it always did. */
 .lane__cell {
   height: 15px;
   min-width: 0;
@@ -989,6 +992,15 @@ kbd {
   border-radius: 3px;
   background: #232733;
   cursor: pointer;
+  display: flex;
+  gap: 1px;
+}
+
+.lane__cell > i {
+  flex: 1;
+  min-width: 0;
+  border-radius: 2px;
+  background: transparent;
 }
 
 /* Downbeats and beats, so sixteen identical squares are countable. */
@@ -1006,21 +1018,25 @@ kbd {
 }
 
 /* Velocity is brightness. Three levels is what the click cycles through, and the difference
-   between them has to be readable at a glance across a whole bar. */
-.lane__cell.is-on {
+   between them has to be readable at a glance across a whole bar. It is painted on the boxes rather
+   than on the cell, so a subdivided step reads as two or three strokes of the same brightness. */
+.lane__cell.is-on > i {
   background: var(--accent);
 }
 
-.lane__cell.is-ghost {
+.lane__cell.is-ghost > i {
   background: color-mix(in srgb, var(--accent) 30%, #232733);
 }
 
-.lane__cell.is-normal {
+.lane__cell.is-normal > i {
   background: color-mix(in srgb, var(--accent) 65%, #232733);
 }
 
-.lane__cell.is-accent {
+.lane__cell.is-accent > i {
   background: var(--accent);
+}
+
+.lane__cell.is-accent {
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
@@ -2252,6 +2268,43 @@ body[data-spiral-size="large"] .workspace__spiral {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(66px, 1fr));
   gap: 4px;
+}
+
+/* The strum row, under the palette. The first and last columns are the widths the Note panel's rows
+   use, so the label edge and the figure edge line up down the whole sidebar rather than every panel
+   inventing its own alignment. The extra column between them is the pair of strokes. */
+.chord-tools__strum {
+  display: grid;
+  grid-template-columns: 56px 52px 1fr 42px;
+  align-items: center;
+  gap: 8px;
+  padding-top: 8px;
+  margin-top: 2px;
+  border-top: 1px solid var(--panel-border);
+}
+
+.chord-tools__strokes {
+  display: flex;
+  gap: 4px;
+}
+
+.chord-tools__strokes .btn {
+  flex: 1;
+  padding: 2px 0;
+  font-size: 12px;
+  line-height: 1.1;
+}
+
+.chord-tools__strum input[type="range"] {
+  width: 100%;
+  min-width: 0;
+}
+
+.chord-tools__spread-value {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--text);
 }
 
 /* The diagram is the button. It is the same drawing it was as a reference, which is the point:

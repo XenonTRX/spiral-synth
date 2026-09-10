@@ -9,11 +9,19 @@
 // parametric all the way down.
 //
 // This is the third worklet and it breaks the shape the other two share, on purpose. They are one
-// voice architecture with parameters; a kit is eleven small synths that happen to live in one
+// voice architecture with parameters; a kit is twelve small synths that happen to live in one
 // processor, and pretending otherwise would mean a filter and an envelope on a hi-hat that wants
 // neither. What they do share - the deadline, the no-allocation rule, the fixed voice pool, the
 // event queue drained against the audio clock - is unchanged, and the arithmetic that is genuinely
 // common comes from voice-dsp.js.
+//
+// **Modulation is per hit.** The kit declares one destination - its level - and a routing aimed at
+// it is evaluated from the moment that drum was struck, exactly as it is on the ladder, because the
+// sources are the same shared definitions and an LFO that meant something different here would make
+// the panel's own description of them a lie. What follows from that is worth stating rather than
+// discovering: an LFO retriggered by a 40ms kick barely moves inside it, and the same routing is
+// plainly audible on an open hat or a cymbal ringing for two seconds. Env 2 is the one that shapes a
+// short hit, and it never releases, because a drum cannot be let go.
 //
 // **Every voice is deterministic.** Noise comes from a per-voice counter-seeded xorshift rather
 // than Math.random, which matters more than it sounds: an exported WAV should be the same file
@@ -21,12 +29,40 @@
 // weather. Seeding from the note id means the same song renders identically every time while two
 // hats in a row still get different noise.
 
-import { CLAP, CRASH, HAT_CLOSED, HAT_OPEN, KICK, RIDE, RIM, SNARE, TOM_HI, TOM_LO, TOM_MID, kindForMidi } from '../drum-map.js';
+import { CLAP, COWBELL, CRASH, HAT_CLOSED, HAT_OPEN, KICK, RIDE, RIM, SNARE, TOM_HI, TOM_LO, TOM_MID, kindForMidi } from '../drum-map.js';
+// One definition of what "LFO 1" is, imported rather than restated - see the long note at the top of
+// modulation.js for why a worklet can share the declaration but not the mechanism.
+import { MOD_SOURCES } from '../../modulation.js';
 import { squareAt } from './voice-dsp.js';
 
 const MAX_VOICES = 24;
 const TWO_PI = Math.PI * 2;
 const REPORT_EVERY = 43;
+
+const MAX_ROUTINGS = 8;
+
+/**
+ * Destinations as small integers, because the inner loop dispatches on them once per routing per
+ * voice per sub-block and comparing strings there would be the most expensive thing in the file.
+ *
+ * There is one of them. The dispatch is written out anyway rather than collapsed into "everything is
+ * the level", so that a second destination - a tune, a decay - is an entry in this table and a branch
+ * below rather than a rethink of the loop.
+ */
+const TARGET_GAIN = 0;
+const TARGET_CODES = { gain: TARGET_GAIN };
+
+const SOURCE_BY_ID = Object.create(null);
+for (const source of MOD_SOURCES) SOURCE_BY_ID[source.id] = source;
+
+// How often modulation is re-evaluated, in samples - 181µs at 44.1kHz, far finer than a drum's own
+// envelope moves and an eighth of the work of doing it per sample. See the ladder for the arithmetic.
+//
+// It is visible in exactly one case and worth knowing about: a *square* LFO has an instantaneous edge,
+// so up to these 8 samples of the previous multiplier get through after it flips. Measured, gating the
+// level with a square at depth 1 leaves the off-half bit-exact zero for 99.9% of its length and one
+// 8-sample burst at the edge. The other three shapes are continuous and get a staircase instead.
+const MOD_SUBBLOCK = 8;
 
 /**
  * The six oscillator frequencies of the machine everyone means when they say "808 hi-hat".
@@ -39,6 +75,17 @@ const REPORT_EVERY = 43;
  */
 const METAL_RATIOS = [1, 1.4826, 1.8, 2.5457, 2.6303, 3.8964];
 const METAL_BASE_HZ = 205.3;
+
+/**
+ * The interval between a cowbell's two oscillators: 540Hz and 800Hz on the machine everyone means,
+ * which is this.
+ *
+ * Deliberately not a ratio anybody would write down. It is a fraction of a semitone off a perfect
+ * fifth, and that gap is the whole voice: at exactly 3:2 the two squares fuse and the result has a
+ * pitch, and the thing that makes a cowbell recognisable is that it does not have one - it has two,
+ * beating against each other, which is what a struck lump of folded metal sounds like.
+ */
+const COWBELL_RATIO = 800 / 540;
 
 // How long the kick's click and the rim's tick last. Short enough to be a transient rather than a
 // sound of its own - past about 5ms a click stops being an attack and starts being a pop.
@@ -67,6 +114,12 @@ const CHOKE_S = 0.004;
  * under, hats well under, cymbals between. The numbers come from rendering each drum on its own and
  * comparing mean power, and they are the reason the level knobs can all sit at their defaults and
  * still sound like a kit rather than a list of drums.
+ *
+ * The cowbell arrived last and was placed the same way: 1.63 puts it at -23.67dB mean power against
+ * the toms' -23.68, which is where an accent belongs - clearly present over a groove without being
+ * the loudest thing in it. Its *peak* is high for that power (-4.6dBFS, against a tom's -9.0) and
+ * that is the voice rather than a mistake: two squares through a bandpass is a much peakier waveform
+ * than a sine with a pitch envelope on it.
  */
 const TRIM = [];
 TRIM[KICK] = 1;
@@ -80,6 +133,7 @@ TRIM[HAT_OPEN] = 7;
 TRIM[TOM_HI] = 0.85;
 TRIM[CRASH] = 4.5;
 TRIM[RIDE] = 3.2;
+TRIM[COWBELL] = 1.63;
 
 class Voice {
   constructor() {
@@ -135,6 +189,13 @@ class Voice {
     this.clapBurst = 0;
     this.clapNext = 0;
     this.rng = 1;
+
+    // Which drum this is, kept because a modulation source can be the note itself - `keytrack` is
+    // exactly that, and on a kit it reads as "which drum" rather than "how high", since these
+    // numbers are a General MIDI map and not a pitch.
+    this.midi = 36;
+    // What modulation has done to this hit's level, as a multiplier. 1 is nothing routed.
+    this.gainScale = 1;
   }
 
   /** xorshift32. Fast, deterministic, and good enough for a noise source by a wide margin. */
@@ -186,11 +247,23 @@ class DrumProcessor extends AudioWorkletProcessor {
       cymbalDecay: 1.8,
       cymbalLevel: 0.55,
       rimLevel: 0.7,
+      cowTune: 540,
+      cowDecay: 0.4,
+      cowLevel: 0.6,
       gain: 0.9,
+      mod: [],
     };
 
     this.voices = new Array(MAX_VOICES);
     for (let i = 0; i < MAX_VOICES; i++) this.voices[i] = new Voice();
+
+    // The routing matrix, flattened into fixed arrays. Rebuilt whenever the state changes, which
+    // happens between quanta, so the inner loop only ever reads it - no iterating an array of
+    // objects and looking up strings where the deadline is.
+    this.routeSource = new Array(MAX_ROUTINGS).fill(null);
+    this.routeTarget = new Int32Array(MAX_ROUTINGS);
+    this.routeDepth = new Float32Array(MAX_ROUTINGS);
+    this.routeCount = 0;
 
     this.events = [];
     this.quanta = 0;
@@ -201,12 +274,18 @@ class DrumProcessor extends AudioWorkletProcessor {
       for (const event of initial.events) if (typeof event.time === 'number') this.events.push(event);
       this.events.sort((a, b) => a.time - b.time);
     }
+    // From the constructor as well as from a `params` message, and the "as well as" is the whole
+    // point: an offline render passes its state through `processorOptions` and can finish before a
+    // port message has been serviced, so a matrix flattened only on `params` would be a matrix that
+    // worked live and silently did nothing in an exported file.
+    this.rebuildRoutes();
 
     this.port.onmessage = (event) => {
       const message = event.data;
       if (message.type === 'params') {
         const next = message.state;
         for (const key in next) this.state[key] = next[key];
+        this.rebuildRoutes();
       } else if (message.type === 'noteOn') {
         this.events.push(message);
         this.events.sort((a, b) => a.time - b.time);
@@ -218,6 +297,57 @@ class DrumProcessor extends AudioWorkletProcessor {
       // its own decay says and no longer, and how long the note was drawn on the roll has nothing
       // to do with it. The one thing that *does* cut a drum short is another drum - see the choke.
     };
+  }
+
+  /**
+   * Flatten the matrix into the arrays the inner loop reads.
+   *
+   * Called from the constructor and from a `params` message, both of which run between render
+   * quanta, so this is allowed to look things up by string and skip over rubbish. It writes into
+   * arrays that already exist rather than building new ones, because they are read on the audio
+   * thread and a fresh array here would be garbage to collect there.
+   */
+  rebuildRoutes() {
+    this.routeCount = 0;
+    const matrix = this.state.mod;
+    if (!Array.isArray(matrix)) return;
+    for (let i = 0; i < matrix.length && this.routeCount < MAX_ROUTINGS; i++) {
+      const routing = matrix[i];
+      if (!routing) continue;
+      const code = TARGET_CODES[routing.target];
+      const source = SOURCE_BY_ID[routing.source];
+      const depth = +routing.depth;
+      if (code === undefined || !source || !depth) continue;
+      this.routeSource[this.routeCount] = source;
+      this.routeTarget[this.routeCount] = code;
+      this.routeDepth[this.routeCount] = depth;
+      this.routeCount++;
+    }
+  }
+
+  /**
+   * Re-evaluate every routing for one voice, once per sub-block.
+   *
+   * The level arrives as a **multiplier**, which is the one place this deliberately differs from the
+   * ladder - there the same destination is added into the amplitude envelope. Down here `voice.amp`
+   * is not only the envelope, it is also the retirement test: a voice is freed when it falls below
+   * -80dB. A modulation added into it would put a floor under every hit that an LFO could hold above
+   * that threshold indefinitely, and a kit left running would fill its voice pool with drums that
+   * had finished sounding. A multiplier scales the hit's own shape and cannot keep it alive.
+   *
+   * `Infinity` for the release, because a drum cannot be let go - see the note on noteOff. Env 2
+   * therefore holds at its sustain instead of ever entering its release stage.
+   */
+  evaluateModulation(voice) {
+    let gain = 0;
+    const t = voice.t / sampleRate;
+    for (let r = 0; r < this.routeCount; r++) {
+      const amount = this.routeSource[r].sample(this.state, t, Infinity, voice.midi) * this.routeDepth[r];
+      if (this.routeTarget[r] === TARGET_GAIN) gain += amount;
+    }
+    // Clamped at silence rather than allowed through: a depth of -1 at an LFO's trough is a drum
+    // turned off, and anything past it is a drum played inside out.
+    voice.gainScale = gain <= -1 ? 0 : 1 + gain;
   }
 
   allocate(midi, when, velocity, id) {
@@ -240,7 +370,7 @@ class DrumProcessor extends AudioWorkletProcessor {
       if (voice.age > this.voices[oldest].age) oldest = i;
     }
     const voice = this.voices[free === -1 ? oldest : free];
-    this.startVoice(voice, kind, velocity, id);
+    this.startVoice(voice, kind, velocity, id, midi);
     return voice;
   }
 
@@ -251,7 +381,7 @@ class DrumProcessor extends AudioWorkletProcessor {
    * few hundred milliseconds, so a parameter that changed mid-hit would be inaudible anyway, and
    * this is the difference between two `Math.exp` per note and two per sample per voice.
    */
-  startVoice(voice, kind, velocity, id) {
+  startVoice(voice, kind, velocity, id, midi) {
     const s = this.state;
     const sr = sampleRate;
     const v = velocity <= 0 ? 0.01 : velocity > 1 ? 1 : velocity;
@@ -259,6 +389,8 @@ class DrumProcessor extends AudioWorkletProcessor {
     voice.active = true;
     voice.kind = kind;
     voice.id = id;
+    voice.midi = midi;
+    voice.gainScale = 1;
     voice.age = 0;
     voice.t = 0;
     voice.velocity = v;
@@ -325,6 +457,19 @@ class DrumProcessor extends AudioWorkletProcessor {
       voice.auxCoef = decayCoef(0.07, sr);
       voice.level = s.tomLevel * v;
       voice.noiseMix = 0.12;
+    } else if (kind === COWBELL) {
+      voice.inc = s.cowTune / sr;
+      voice.inc2 = (s.cowTune * COWBELL_RATIO) / sr;
+      voice.ampCoef = decayCoef(s.cowDecay * bright, sr);
+      // The stick, as a fast second envelope. A cowbell is struck on the outside of a resonator, so
+      // the first few milliseconds are the stick and everything after it is the metal.
+      voice.aux = 1;
+      voice.auxCoef = decayCoef(0.006, sr);
+      // The bandpass tracks the tune rather than sitting at a fixed corner, so turning the pitch down
+      // moves the clank with it instead of gradually filtering the voice away.
+      voice.svfF = 2 * Math.sin((Math.PI * Math.min(0.45 * sr, s.cowTune * 2.2)) / sr);
+      voice.svfQ = 0.5;
+      voice.level = s.cowLevel * v;
     } else {
       // The metallic family: two hats and two cymbals off one oscillator bank, told apart by how
       // long they ring and how much of the bottom is taken away.
@@ -384,6 +529,17 @@ class DrumProcessor extends AudioWorkletProcessor {
       voice.phase += freq / sr;
       if (voice.phase >= 1) voice.phase -= 1;
       out = (Math.sin(TWO_PI * voice.phase) + voice.noise() * voice.noiseMix * voice.aux) * voice.amp;
+    } else if (kind === COWBELL) {
+      // Band-limited squares, for the same reason the cymbals are: a square at 800Hz has harmonics a
+      // long way past Nyquist, and an unasked-for partial is the one number this project measures.
+      const pair = squareAt(voice.phase, voice.inc) + squareAt(voice.phase2, voice.inc2) * 0.8;
+      voice.phase += voice.inc;
+      if (voice.phase >= 1) voice.phase -= 1;
+      voice.phase2 += voice.inc2;
+      if (voice.phase2 >= 1) voice.phase2 -= 1;
+      // Filtered for the body, plus a little of the raw pair while the stick envelope lasts - the
+      // bandpass alone rounds the attack off, and the attack is the half of this that carries.
+      out = (this.bandpass(voice, pair * 0.5) + pair * 0.14 * voice.aux) * voice.amp;
     } else {
       let sum = 0;
       for (let i = 0; i < METAL_RATIOS.length; i++) {
@@ -439,11 +595,16 @@ class DrumProcessor extends AudioWorkletProcessor {
         this.allocate(event.midi, now, event.velocity ?? 1, event.id ?? 0);
       }
 
+      // Modulation on its own, coarser clock. `i % MOD_SUBBLOCK` rather than a second loop so that a
+      // voice struck mid-block is still evaluated before it is first heard.
+      const evaluateMod = this.routeCount > 0 && i % MOD_SUBBLOCK === 0;
+
       let mix = 0;
       for (let v = 0; v < MAX_VOICES; v++) {
         const voice = this.voices[v];
         if (!voice.active) continue;
         voice.age++;
+        if (evaluateMod) this.evaluateModulation(voice);
 
         if (voice.attack < 1) {
           voice.attack += voice.attackStep;
@@ -466,7 +627,7 @@ class DrumProcessor extends AudioWorkletProcessor {
           voice.aux *= voice.auxCoef;
         }
 
-        mix += this.render(voice, sr);
+        mix += this.render(voice, sr) * voice.gainScale;
         voice.t++;
 
         // Retired on level rather than on a length, because a drum has no length - it is finished

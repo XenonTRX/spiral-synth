@@ -208,7 +208,10 @@ export function createNoteTools({ song, getBpm }) {
       ? `Arrive at this pitch from ${noteName(octaveFromMidi(source.midi), pcFromMidi(source.midi))}, instead of starting on it (S)`
       : pitched
         ? 'Nothing is struck before this note, so there is no pitch to arrive from'
-        : "This part's instrument has no pitches for a slide to travel between";
+        // Worded for both instruments that decline, which are two different reasons: a kit's notes are
+        // not pitches at all, and a piano's cannot be bent. "No pitches to travel between" was true
+        // of the kit and simply wrong about the piano.
+        : "This part's instrument cannot travel between pitches";
 
     // Left alone while it is being dragged, including the moment it passes through zero: re-reading
     // the model there would disable the control under the pointer and end the drag at the one value

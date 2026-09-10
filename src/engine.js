@@ -329,10 +329,17 @@ export function playNote(track, midi, when, durationSeconds, velocity = 1, slide
   return pool().playNote(track, midi, when, durationSeconds, velocity, slide);
 }
 
-/** A preview of the real thing: whatever the part you are editing actually sounds like. */
-export function auditionNote(track, midi, seconds = AUDITION_SECONDS) {
+/**
+ * A preview of the real thing: whatever the part you are editing actually sounds like.
+ *
+ * `delaySeconds` is how far into the future to put it, and exists for one caller: a strum is a chord
+ * whose whole point is that its notes do *not* start together, so auditioning one as a block would
+ * preview the thing the edit was made to stop being. Everything else leaves it at zero and starts now.
+ */
+export function auditionNote(track, midi, seconds = AUDITION_SECONDS, delaySeconds = 0) {
   if (!track) return;
-  playNote(track, midi, audioNow(), Math.min(seconds, MAX_AUDITION_SECONDS));
+  const at = audioNow() + (delaySeconds > 0 ? delaySeconds : 0);
+  playNote(track, midi, at, Math.min(seconds, MAX_AUDITION_SECONDS));
 }
 
 export function dspVoices() {

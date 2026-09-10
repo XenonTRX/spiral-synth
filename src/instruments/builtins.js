@@ -8,9 +8,16 @@
 //
 // The order is the order presets are offered in, and the first one registered is what a part gets
 // when a save names an instrument this build has never heard of.
+//
+// The three modelled strings sit between the synthesisers and the kit because that is what they are:
+// the four above them are signal chains with knobs on the stages, and the kit below is not pitched at
+// all. Everything in between is an instrument being modelled rather than a sound being built.
 
 import './subtractive.js';
 import './fm.js';
 import './ladder.js';
 import './wavetable.js';
+import './piano.js';
+import './guitar.js';
+import './violin.js';
 import './drums.js';

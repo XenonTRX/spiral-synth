@@ -11,6 +11,7 @@ import { secondsForBeats } from './music-theory.js';
 import { auditionNote } from './engine.js';
 import { instrumentSlides } from './instruments.js';
 import { DEFAULT_SLIDE, slideSources } from './song.js';
+import { getStrumSpread, strumShifts } from './strum.js';
 
 /**
  * Preview a pitch in a part's own voice.
@@ -19,9 +20,11 @@ import { DEFAULT_SLIDE, slideSources } from './song.js';
  * mean and the one that didn't was quietly wrong: a click on a spiral slot used to audition
  * through the default voice while the identical click on the roll used the part's, so the same
  * note sounded like two different instruments depending on which half of the app you clicked.
+ *
+ * `delaySeconds` is for the one caller whose preview is not a single moment - see `strumSelection`.
  */
-export function audition(track, midi, seconds) {
-  auditionNote(track, midi, seconds);
+export function audition(track, midi, seconds, delaySeconds) {
+  auditionNote(track, midi, seconds, delaySeconds);
 }
 
 /**
@@ -141,6 +144,39 @@ export function nudgeSelection(song, deltaBeats) {
   song.pushUndo();
   for (const note of notes) song.updateNote(track.id, note.id, { start: note.start + delta });
   song.setCursor(Math.max(0, song.getCursor() + delta));
+}
+
+// Past a dozen notes the tail of a preview is no longer telling you anything about the gesture you
+// just made, and a selection can be a whole passage.
+const STRUM_PREVIEW_NOTES = 12;
+
+/**
+ * Roll the selection in pitch order, so a chord is played across rather than struck at once.
+ *
+ * `direction` is +1 for a stroke that finishes at the top and -1 for one that finishes at the
+ * bottom - a guitarist's down- and up-stroke. How far apart the notes end up is one number owned by
+ * strum.js, so the key and the control under the palette are the same gesture; the arithmetic, and
+ * the reasons it is relative rather than absolute, are there too.
+ *
+ * Two notes at least, because a strum of one note is a nudge, and this would be a confusing way to
+ * get one. Nothing is refused beyond that: the selection is taken as the chord, whatever is in it.
+ *
+ * Heard as it was written, which is the only way to judge a strum - the preview is spaced by the
+ * offsets the notes just got, so a 40ms spread sounds like a 40ms spread instead of like the block
+ * chord this exists to stop it being.
+ */
+export function strumSelection(song, direction, bpm) {
+  const track = song.activeTrack();
+  const notes = song.selectedNotes();
+  if (!track || notes.length < 2) return;
+  const shifts = strumShifts(notes, { direction, spread: getStrumSpread() });
+  song.pushUndo();
+  for (const { id, start } of shifts) song.updateNote(track.id, id, { start });
+  const pitchOf = new Map(notes.map((note) => [note.id, note.midi]));
+  const earliest = Math.min(...shifts.map((shift) => shift.start));
+  for (const { id, start } of shifts.slice(0, STRUM_PREVIEW_NOTES)) {
+    audition(track, pitchOf.get(id), undefined, secondsForBeats(start - earliest, bpm));
+  }
 }
 
 export function transposeSelection(song, semitones) {

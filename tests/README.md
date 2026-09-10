@@ -27,6 +27,11 @@ like the sentence it came from.
 | `fft.test.js` | forward-then-inverse is the identity, a pure bin is a pure tone, an impulse is flat |
 | `decibels.test.js` | gain and dB are inverses, and silence is a number rather than −∞ |
 | `server.test.js` | the static server stays inside its own directory, and one bad URL is a 400 rather than a dead process |
+| `strum.test.js` | a rolled chord comes out in pitch order, its earliest note does not move, and the opposite stroke cancels the first exactly |
+| `poly-engine.test.js` | notes land on the sample they were scheduled for, the pool steals the oldest, a slide is geometric, and a routing naming nothing is dropped |
+| `pluck.test.js` | the plucked string is in tune to within a cent over six octaves, the damping control does not retune it, the fundamental decays at the rate the knob says, and a pick half way along loses the even harmonics |
+| `bow.test.js` | the bowed string oscillates at the note asked for, sustains rather than decays, takes longer to speak than the bow takes to move, and stays bounded when the bow is pushed past what a bow can do |
+| `piano.test.js` | the partials are progressively sharp of the harmonic series (20 cents by the sixteenth), what the scope is told matches what the voice does, and high partials die faster than low ones |
 
 ## What is deliberately not here
 
@@ -34,6 +39,12 @@ like the sentence it came from.
 do not exist in Node, so the main-thread halves of the effects and instruments are not reachable
 from here. This is the reason the DSP lives in its own `*-dsp.js` files in the first place — keep
 new arithmetic there and it stays testable.
+
+The three string instruments push that line further than the ones before them: their voice pools
+and event queues are in the `*-dsp.js` half too, so `poly-engine.test.js` can ask when a note
+started and which voice got stolen, and the processor files are the twenty lines that genuinely
+cannot leave the audio thread. `string-helpers.js` is the shared rig — it renders a note through
+an engine in 128-sample blocks, exactly as a processor would, and measures the result.
 
 **Anything that needs a DOM.** The panels, the roll, the spiral and the storage layer all touch
 `document` or `localStorage`.

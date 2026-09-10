@@ -130,6 +130,7 @@ and `⇧` makes either one bigger.
 | `⌥↑` `⌥↓` | transpose the selected notes (`⇧` by an octave) |
 | `,` `.` | softer / harder — the velocity of the selected notes, a tenth at a time |
 | `S` | slide — the selected notes arrive from the pitch struck before them |
+| `G` | strum — roll the selected notes in pitch order (`⇧G` the other way, which cancels it) |
 | `[` `]` | shorter / longer by one snap step — the selection, or the next note if nothing is selected |
 | `⌥[` `⌥]` | stretch the selection in time — double-time / half-time, lengths and gaps together |
 | `D` | duplicate the selection, one selection-width later |
@@ -195,7 +196,7 @@ arithmetic and import without a browser, plus the static server. See
 | `src/roll-viewport.js` | where the roll is looking - reveal, centre, and following a kit's range |
 | `src/track-rack.js` | the rack: one row per part, sitting above the roll |
 | `src/time-scale.js` | how much room one whole note is worth - the roll's only zoom |
-| `src/drum-lane.js` | the step lane — a drum grid over the same notes the roll edits |
+| `src/drum-lane.js` | the step lane — a drum grid over the same notes the roll edits, one to four hits a step |
 | `src/edits.js` | operations reachable from more than one surface, so they cannot diverge |
 | `src/keyboard.js` | the shortcut layer |
 
@@ -238,12 +239,22 @@ arithmetic and import without a browser, plus the static server. See
 | `src/instruments/fm.js` | two-operator FM — a modulator bending a carrier, and an index envelope |
 | `src/instruments/ladder.js` | the worklet instrument — WAM-shaped, async, its own DSP |
 | `src/instruments/worklets/ladder-processor.js` | the audio-thread half: PolyBLEP oscillator, nonlinear ladder |
-| `src/instruments/drums.js` | the kit — eleven drums on the GM map, named notes, step rows |
+| `src/instruments/drums.js` | the kit — twelve drums on the GM map, named notes, step rows |
 | `src/instruments/drum-map.js` | which note is which drum, read by the processor, gutter, scope and lane |
-| `src/instruments/worklets/drum-processor.js` | the audio-thread half: eleven small synths in one processor |
+| `src/instruments/worklets/drum-processor.js` | the audio-thread half: twelve small synths in one processor |
 | `src/instruments/wavetable.js` | the wavetable instrument — tables, morph, unison, and its own display |
 | `src/instruments/worklets/wavetable-processor.js` | the audio-thread half: mip selection, unison phases, frame blend |
 | `src/instruments/worklets/voice-dsp.js` | the arithmetic both processors share — ladder step, envelopes, unison |
+| `src/instruments/poly-engine.js` | the part of a worklet instrument that is not the sound — pool, queue, matrix |
+| `src/instruments/worklet-voice.js` | the main-thread half: a node that does not exist yet, and the notes waiting for it |
+| `src/instruments/string-dsp.js` | what a string is made of — losses, a body, a bow's grip, one RNG |
+| `src/instruments/guitar.js` | the plucked string — pick position, pick hardness, damping |
+| `src/instruments/pluck-dsp.js` | a delay line, a loss and a filter, which is a plucked string |
+| `src/instruments/violin.js` | the bowed string — bow speed, pressure, position |
+| `src/instruments/bow-dsp.js` | stick and slip: two delay lines either side of a friction curve |
+| `src/instruments/piano.js` | the piano — hammer, inharmonicity, per-partial decay |
+| `src/instruments/piano-dsp.js` | a bank of decaying sinusoids, and where a stiff string puts them |
+| `src/instruments/worklets/pluck-processor.js` `bow-processor.js` `piano-processor.js` | the twenty lines of each that have to be on the audio thread |
 | `src/instruments/filter-envelope.js` | where the cutoff was *told* to go, for the Sweep overlay |
 | `src/instruments/builtins.js` | the one line adding an instrument costs |
 | `src/engine.js` | a set of instruments bound to a context — the live one, and the render's |
@@ -298,6 +309,7 @@ arithmetic and import without a browser, plus the static server. See
 | | |
 |---|---|
 | `src/music-theory.js` | pitch, scales, the duration lattice, snap sizes |
+| `src/strum.js` | how far apart a rolled chord's notes end up, and why it is relative |
 | `src/params.js` | what a knob is, on its own — no imports, so it cannot be in a cycle |
 | `src/param-state.js` | building and checking a state from knob descriptors, for both registries |
 | `src/param-controls.js` | one knob as a control, for both panels |

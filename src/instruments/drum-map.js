@@ -27,6 +27,7 @@ export const HAT_OPEN = 7;
 export const TOM_HI = 8;
 export const CRASH = 9;
 export const RIDE = 10;
+export const COWBELL = 11;
 
 /**
  * The kit, in the order the step lane stacks it.
@@ -35,10 +36,17 @@ export const RIDE = 10;
  * ascending note number. A drummer reads a kit by what the limbs do, so kick sits under snare and
  * the hats sit above both, and that is worth more on a grid than sorting by a number nobody is
  * looking at. The roll still shows them in pitch order, because the roll is a pitch axis.
+ *
+ * Twelve rows now. Adding one costs exactly this entry, a voice kind above, and the arithmetic that
+ * makes the sound - the lane, the gutter, the scope's note list and the processor's dispatch all read
+ * this table, so none of them had to be told.
  */
 export const DRUMS = [
   { midi: 49, kind: CRASH, name: 'Crash', short: 'Crs' },
   { midi: 51, kind: RIDE, name: 'Ride', short: 'Rid' },
+  // Mounted rather than struck with a limb, which is why it sits above the cymbals rather than
+  // between the drums: it is the one voice here that is not part of the kit proper.
+  { midi: 56, kind: COWBELL, name: 'Cowbell', short: 'Cow' },
   { midi: 46, kind: HAT_OPEN, name: 'Open Hat', short: 'OH' },
   { midi: 42, kind: HAT_CLOSED, name: 'Closed Hat', short: 'CH' },
   { midi: 48, kind: TOM_HI, name: 'Hi Tom', short: 'T-Hi' },

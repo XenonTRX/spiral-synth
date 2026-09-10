@@ -23,6 +23,7 @@ import {
   selectAdjacentNote,
   selectAll,
   stretchSelection,
+  strumSelection,
   toggleNoteAt,
   toggleSlide,
   transposeSelection,
@@ -256,6 +257,14 @@ export function installKeyboard({ song, transport, roll, getBpm, onToggleLoop, o
     if (key === 's') {
       event.preventDefault();
       toggleSlide(song);
+      return;
+    }
+    // Strum, on the selection. One key with Shift for the other direction rather than a pair, because
+    // the two are not "more" and "less" of anything - they are the same stroke the other way up, and
+    // pressing the one you did not mean is undone by pressing the other rather than by ⌘Z.
+    if (key === 'g') {
+      event.preventDefault();
+      strumSelection(song, event.shiftKey ? -1 : 1, getBpm());
       return;
     }
     if (key === 'm') {
