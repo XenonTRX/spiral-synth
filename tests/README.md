@@ -32,6 +32,10 @@ like the sentence it came from.
 | `pluck.test.js` | the plucked string is in tune to within a cent over six octaves, the damping control does not retune it, the fundamental decays at the rate the knob says, and a pick half way along loses the even harmonics |
 | `bow.test.js` | the bowed string oscillates at the note asked for, sustains rather than decays, takes longer to speak than the bow takes to move, and stays bounded when the bow is pushed past what a bow can do |
 | `piano.test.js` | the partials are progressively sharp of the harmonic series (20 cents by the sixteenth), what the scope is told matches what the voice does, and high partials die faster than low ones |
+| `grid.test.js` | the step lane's bar lines are read off a cell's own time, so a triplet lane does not drift over 193 cells or a 5/8 bar; swing is straight at 50%, a 1/12 at two thirds, and only ever late |
+| `timeline.test.js` | what the transport and the exporter are both handed: a twelve-step pattern comes round after twelve, steps past the last one are silent but not gone, swing moves the kit and not the bass, and nothing is dropped either way |
+| `track-time.test.js` | a part's place in the song — the fold onto its passes and back out again, a span that can stop mid-pass, and a set pattern length that is not rounded to a bar |
+| `edits.test.js` | the operations more than one surface reaches, on a part that does not begin at bar 1: a duplicate leaves the cursor on the copy, and a chord root is in song time whichever way it was named |
 
 ## What is deliberately not here
 
@@ -39,6 +43,12 @@ like the sentence it came from.
 do not exist in Node, so the main-thread halves of the effects and instruments are not reachable
 from here. This is the reason the DSP lives in its own `*-dsp.js` files in the first place — keep
 new arithmetic there and it stays testable.
+
+Worth knowing where that line actually falls, because it was assumed to be tighter than it is:
+`song.js` and `timeline.js` both import here despite reaching the instrument *registry*, because a
+registry is plain data until something asks it to make a sound. `timeline.test.js` therefore drives a
+real song through the real scheduling walk. The swing measurements were originally taken in a
+browser console, before anyone tried doing it here.
 
 The three string instruments push that line further than the ones before them: their voice pools
 and event queues are in the `*-dsp.js` half too, so `poly-engine.test.js` can ask when a note

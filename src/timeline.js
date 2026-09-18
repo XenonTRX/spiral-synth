@@ -10,12 +10,32 @@
 // differ only in what they do with the answer: one hands each note to the audio clock as it
 // approaches, the other hands all of them over at once.
 
-import { secondsForBeats } from './music-theory.js';
+import { SWING_STRAIGHT, getSwing, laneStepBeats, swungStart } from './grid.js';
+import { getInstrument } from './instruments.js';
+import { beatsForSeconds, secondsForBeats } from './music-theory.js';
 import { slideSources } from './song.js';
+// The tempo, because a part's offset is in milliseconds and everything on the way out of here is in
+// whole notes. Converting it needs the one number tempo.js owns - see its header for why reaching
+// for it directly is the arrangement rather than a shortcut.
+import { getBpm } from './tempo.js';
 
 // Starts are sums of halves, thirds and sixteenths, so a note landing exactly on a region boundary
 // can compute a hair either side of it.
 const EPSILON = 1e-9;
+
+/**
+ * Whether this part is a step sequencer, which is the only thing swing applies to.
+ *
+ * Swing is the drum machine's, not the song's, and that is a scope decision rather than a limitation
+ * of the arithmetic - it would work on any part. A shuffle set from a control in the step lane has no
+ * business moving the bass line, and the pairing it is defined against is the *lane's* step, which
+ * only a part with a lane has. Widening it to the song means giving it a home that is not the lane
+ * and a subdivision of its own; both are reasonable and neither is this.
+ *
+ * Asked per part rather than per note: it is a registry lookup, and the walk below runs every
+ * scheduling window.
+ */
+const hasSteps = (track) => Boolean(getInstrument(track?.instrument?.type)?.steps);
 
 /**
  * Every note that *starts* inside `[from, to)` of song time, in every unmuted part.
@@ -42,15 +62,34 @@ const EPSILON = 1e-9;
  * that never reaches its pitch, which is not a musical intention anyone has to be allowed to state.
  */
 export function* notesInWindow(song, from, to) {
+  // One reading of the swing for the whole window, so a knob moved mid-window cannot shuffle half of
+  // it one way and half the other.
+  const swing = getSwing();
+  const shuffling = swing > SWING_STRAIGHT;
   for (const track of song.getTracks()) {
     if (track.muted) continue;
+    // One amount of swing, each part shuffling against *its own* scale - so a kit at a 1/32 and one
+    // at a 1/8 both shuffle, and neither is shuffled at the other's resolution. Which is the whole
+    // reason the scale had to stop being global: a single step size can only describe one part.
+    const swingStep = shuffling && hasSteps(track) ? laneStepBeats(track) : 0;
+    const swung = swingStep > 0;
     const end = song.trackEnd(track);
+    // How long one pass is, which is also where the pattern stops - see trackPeriod.
+    const period = song.trackPeriod(track);
+    // The part's own lag, converted once per part rather than per note. Positive is late.
+    const offsetMs = song.trackOffsetMs(track);
+    const offsetBeats = offsetMs === 0 ? 0 : beatsForSeconds(offsetMs / 1000, getBpm());
     // Only when there is one, because this is a pass over the part's whole note list and it runs
     // every scheduling window. A part with no slides in it - which is most parts - pays one scan
     // for the question and nothing for the answer.
     const sources = track.notes.some((n) => n.slide > 0) ? slideSources(track.notes) : null;
     for (const offset of song.repeatOffsets(track)) {
       for (const note of track.notes) {
+        // Past the last step, so it does not play. The material keeps it - shorten a pattern and
+        // lengthen it again and the steps come back - but one pass is `period` long and anything
+        // outside that is outside the pattern. A *derived* period always contains the material it was
+        // derived from, so this can only ever reject a note when someone has set a length themselves.
+        if (period > 0 && note.start >= period - EPSILON) continue;
         const start = note.start + offset;
         if (start < from || start >= to) continue;
         // Past where the part stops, so it never sounds - which is how a part can enter halfway
@@ -68,7 +107,22 @@ export function* notesInWindow(song, from, to) {
         // cleanly.
         const source = note.slide > 0 ? sources?.get(note.id) : null;
         const slide = source ? { fromMidi: source.midi, beats: Math.min(note.slide, length) } : null;
-        yield { track, note, start, length, slide };
+        // Last, and on the way out rather than on the way in. Everything above - the window, the
+        // part's end, the clip - is decided on the straight position the note was written at, and only
+        // the moment it sounds is shifted. That ordering is the whole of why this is safe for swing:
+        // it moves a note later and never earlier, so nothing can be shifted out of a window it was
+        // selected for, and every note is still yielded exactly once. Its *length* is left alone too,
+        // which costs nothing where swing applies - a drum ignores the length entirely.
+        //
+        // The part's offset then shifts the result, and *can* be negative, which is the whole point of
+        // it - a part that sits fractionally ahead of the grid is the half of this that no amount of
+        // moving notes about can express, since nothing can be written before the first beat. That it
+        // is bounded well inside the scheduler's lookahead is what keeps "earlier" from meaning "in
+        // the past" (see MAX_TRACK_OFFSET_MS), and the floor at zero is for the one place that is not
+        // enough: a note on the very first beat, which has no earlier to be moved to.
+        let when = swung ? swungStart(start, swingStep, swing) : start;
+        if (offsetBeats !== 0) when = Math.max(0, when + offsetBeats);
+        yield { track, note, start: when, length, slide };
       }
     }
   }

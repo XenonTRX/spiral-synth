@@ -62,7 +62,16 @@ export function toggleNoteAt(song, { midi, beat, bpm }) {
 export function chordRoot(song) {
   const selected = song.selectedNotes();
   if (selected.length === 1) {
-    return { midi: selected[0].midi, start: selected[0].start, length: selected[0].length };
+    const track = song.activeTrack();
+    return {
+      midi: selected[0].midi,
+      // In song time, because the other branch is, and because `buildChord` puts this through
+      // `sourceBeat` and then onto the cursor - both of which expect a moment in the song. A note's
+      // own `start` is measured from the part, so on a part beginning at bar 5 the two branches of
+      // this function disagreed by four bars and the chord was built in the wrong place.
+      start: track ? song.songBeat(track.id, selected[0].start, song.getCursor()) : selected[0].start,
+      length: selected[0].length,
+    };
   }
   return { midi: song.getPitchCursor(), start: song.getCursor(), length: song.newNoteLength() };
 }
@@ -76,13 +85,19 @@ export function buildChord(song, intervals, bpm) {
   const track = song.activeTrack();
   if (!track) return;
   const root = chordRoot(song);
+  // Two clocks, and both are needed. `root.start` is a moment in the song, which is what the lookup
+  // below takes; `start` is that folded into the part's own material, which is where a note is
+  // written. Asking the lookup in material time is the mistake this used to make: on a part
+  // beginning at bar 5 it asked whether anything was sounding at bar 1, where the part is not
+  // playing at all, so the answer was always no and building a chord on a note you had already
+  // placed left a second copy of it underneath.
   const start = song.sourceBeat(track.id, root.start);
   song.pushUndo();
   const ids = [];
   for (const interval of intervals) {
     const midi = root.midi + interval;
     // A root you already placed is part of the chord, not a duplicate of it.
-    const existing = song.noteAtPitch(start, midi, track.id);
+    const existing = song.noteAtPitch(root.start, midi, track.id);
     if (existing) {
       ids.push(existing.id);
       continue;
@@ -129,7 +144,11 @@ export function duplicateSelection(song) {
     })
   );
   song.setSelection(copies.map((n) => n.id));
-  song.setCursor(from + offset);
+  // In song time. `from` and `offset` are both measured in the part's own material, and the cursor
+  // is a moment in the *song* - the same number only when the part begins at bar 1. On a part that
+  // begins anywhere else this sent the cursor back by the part's own offset, and since the keyboard
+  // reveals the cursor after duplicating, the roll's viewport went with it.
+  song.setCursor(song.songBeat(track.id, from + offset, song.getCursor()));
 }
 
 export function nudgeSelection(song, deltaBeats) {
@@ -333,15 +352,22 @@ export function selectAdjacentNote(song, direction) {
     // Nothing selected: come in from wherever the cursor is, rather than from the ends. The
     // bound is inclusive, so a first Tab picks up whatever starts *on* the cursor rather than
     // stepping over it.
-    index = direction > 0 ? notes.findIndex((n) => n.start >= song.getCursor()) : -1;
+    //
+    // Folded into the part's own time first, because that is what a note's `start` is measured in.
+    // Comparing the two directly worked only on a part beginning at bar 1; anywhere else the cursor
+    // read as a position in the material it was not at, so the first Tab landed on the wrong note.
+    const at = song.sourceBeat(track.id, song.getCursor());
+    index = direction > 0 ? notes.findIndex((n) => n.start >= at) : -1;
     if (index === -1) {
-      index = direction > 0 ? 0 : notes.findLastIndex((n) => n.start < song.getCursor());
+      index = direction > 0 ? 0 : notes.findLastIndex((n) => n.start < at);
       if (index === -1) index = notes.length - 1;
     }
   }
   const note = notes[Math.max(0, Math.min(notes.length - 1, index))];
   song.setSelection([note.id]);
-  song.setCursor(note.start);
+  // And back out into song time, in the pass the cursor was already in - so Tab walks the part you
+  // are looking at rather than jumping to the first pass of it.
+  song.setCursor(song.songBeat(track.id, note.start, song.getCursor()));
   song.setPitchCursor(note.midi);
   audition(track, note.midi);
 }

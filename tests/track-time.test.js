@@ -7,7 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   BEAT_EPSILON, fadeOf, repeatOffsets, sourceBeat, trackBegin, trackCovers,
-  trackEnd, trackExtent, trackIsPinned, trackPasses, trackPeriod, trackSpan,
+  songBeat, trackEnd, trackExtent, trackIsPinned, trackOwnPeriod, trackPasses, trackPeriod, trackSpan,
 } from '../src/track-time.js';
 
 // Four quarter notes: material that runs to one whole note.
@@ -124,4 +124,111 @@ test('a fade is clamped to something the region can contain', () => {
   assert.equal(fadeOf({ ...track, fadeIn: 0.5 }, 'fadeIn'), 0.5);
   assert.equal(fadeOf({ ...track, fadeIn: 99 }, 'fadeIn'), 2, 'clamped to the span');
   assert.equal(fadeOf({ ...track, fadeIn: -1 }, 'fadeIn'), 0);
+});
+
+// --- an explicit pattern length -----------------------------------------------------------------
+//
+// The claims track-time.js makes about a set period: it wins over the derived one, it is not rounded
+// to a bar (which is the whole point), the passes and the fold both follow it, and clearing it hands
+// the part back to its material.
+
+const sixteenths = (count) => ({
+  notes: Array.from({ length: count }, (_, i) => ({ start: i / 16, length: 1 / 64 })),
+  begin: 0,
+  end: null,
+});
+
+test('an unset period is null, and the part follows its material', () => {
+  const track = sixteenths(16);
+  assert.equal(trackOwnPeriod(track), null);
+  assert.equal(trackPeriod(track), 1, 'sixteen sixteenths round up to one bar');
+});
+
+test('a set period wins, and is not rounded up to a bar', () => {
+  // The case the derived period cannot express: twelve sixteenths is three quarters of a 4/4 bar,
+  // and rounding it up to a bar would answer a different question.
+  const track = { ...sixteenths(16), period: 12 / 16 };
+  assert.equal(trackOwnPeriod(track), 0.75);
+  assert.equal(trackPeriod(track), 0.75);
+});
+
+test('the passes and the pass offsets both follow it', () => {
+  const track = { ...sixteenths(16), period: 12 / 16, end: 3 };
+  assert.equal(trackPasses(track), 4, 'three bars holds four twelve-step passes');
+  const offsets = repeatOffsets(track);
+  assert.equal(offsets.length, 4);
+  for (let i = 1; i < offsets.length; i++) {
+    assert.ok(Math.abs(offsets[i] - offsets[i - 1] - 0.75) < BEAT_EPSILON);
+  }
+});
+
+test('and so does the fold back onto the material', () => {
+  const track = { ...sixteenths(16), period: 12 / 16, end: 3 };
+  // Song step 12 is the second pass's step 0, because the pattern came round after twelve.
+  assert.ok(Math.abs(sourceBeat(track, 12 / 16)) < BEAT_EPSILON);
+  assert.ok(Math.abs(sourceBeat(track, 13 / 16) - 1 / 16) < BEAT_EPSILON);
+});
+
+test('clearing it hands the part back to its material', () => {
+  const track = { ...sixteenths(16), period: 12 / 16 };
+  track.period = null;
+  assert.equal(trackOwnPeriod(track), null);
+  assert.equal(trackPeriod(track), 1);
+});
+
+test('a period of nothing reads as unset rather than as a pass of no length', () => {
+  // A zero or negative pass would not terminate the loop that generates the offsets.
+  for (const bad of [0, -1, Number.NaN, 'twelve', null, undefined]) {
+    assert.equal(trackOwnPeriod({ ...sixteenths(4), period: bad }), null, `${String(bad)} is unset`);
+  }
+  assert.ok(repeatOffsets({ ...sixteenths(4), period: 0, end: 2 }).length > 0);
+});
+
+// --- material time back into song time ----------------------------------------------------------
+//
+// `sourceBeat` folds a song beat onto the material; this is the way back. It exists because the way
+// back used to be done by not doing it - a note's `start` handed straight to the cursor, which is
+// the same number only when the part begins at bar 1.
+
+test('a part at the front of the song is the identity', () => {
+  const track = { notes: [{ start: 0, length: 1 }], begin: 0, end: null };
+  assert.equal(songBeat(track, 0.25, 0), 0.25);
+});
+
+test('a part that begins later puts its material there', () => {
+  const track = { notes: [{ start: 0, length: 1 }], begin: 4, end: 8 };
+  assert.equal(songBeat(track, 0.25, 4), 4.25);
+  assert.equal(songBeat(track, 0, 4), 4);
+});
+
+test('it lands in the pass you are standing in, not the first one', () => {
+  // One bar of material beginning at bar 5 and repeating four times. Material beat 0.25 sounds at
+  // 4.25, 5.25, 6.25 and 7.25; which one you mean depends on where you already are.
+  const track = { notes: [{ start: 0, length: 1 }], begin: 4, end: 8 };
+  assert.equal(songBeat(track, 0.25, 4.1), 4.25);
+  assert.equal(songBeat(track, 0.25, 5.9), 5.25);
+  assert.equal(songBeat(track, 0.25, 6), 6.25);
+  assert.equal(songBeat(track, 0.25, 7.5), 7.25);
+});
+
+test('and it is the inverse of sourceBeat wherever you stand', () => {
+  const track = { notes: [{ start: 0, length: 1 }], begin: 4, end: 8 };
+  for (const at of [4, 4.25, 5, 5.5, 6.75, 7.9]) {
+    const local = sourceBeat(track, at);
+    assert.ok(Math.abs(songBeat(track, local, at) - at) < BEAT_EPSILON, `round trip at ${at}`);
+  }
+});
+
+test('it never answers with a pass the part does not have', () => {
+  // `near` is wherever the cursor happens to be, which may be nowhere near the part.
+  const repeating = { notes: [{ start: 0, length: 1 }], begin: 4, end: 8 };
+  assert.equal(songBeat(repeating, 0.25, 0), 4.25, 'before it begins, the first pass');
+  assert.equal(songBeat(repeating, 0.25, 99), 7.25, 'far past the end, the last one');
+  const once = { notes: [{ start: 0, length: 0.5 }], begin: 4, end: null };
+  assert.equal(songBeat(once, 0.25, 99), 4.25, 'and one pass has only one answer');
+});
+
+test('a part with nothing in it has no passes to choose between', () => {
+  assert.equal(songBeat({ notes: [], begin: 2, end: null }, 0.25, 9), 2.25);
+  assert.equal(songBeat(null, 0.25, 9), 0.25);
 });

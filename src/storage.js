@@ -14,7 +14,18 @@
 // in favour of a default. The worst a save from three formats ago can do is come back missing
 // something. It cannot throw, and it cannot leave half a song on screen.
 
-import { RESOLUTION_CHOICES, getResolutionId, getSnapId, setResolutionId, setSnapId } from './grid.js';
+import {
+  LANE_STEP_CHOICES,
+  MAX_SWING,
+  RESOLUTION_CHOICES,
+  SWING_STRAIGHT,
+  getResolutionId,
+  getSnapId,
+  getSwing,
+  setResolutionId,
+  setSnapId,
+  setSwing,
+} from './grid.js';
 import { METER_CHOICES, getMeterId, setMeterId } from './meter.js';
 import { SNAP_CHOICES } from './music-theory.js';
 import { getInstrument } from './instruments.js';
@@ -111,7 +122,13 @@ export function captureDoc({ song, bpm }) {
     savedAt: Date.now(),
     bpm,
     meter: getMeterId(),
-    grid: { snap: getSnapId(), resolution: getResolutionId() },
+    grid: {
+      snap: getSnapId(),
+      resolution: getResolutionId(),
+      // The one grid setting that changes what the song *sounds* like rather than where an edit
+      // lands, so of all of them this is the one a save cannot leave out.
+      swing: getSwing(),
+    },
     song: song.toDoc(),
   };
 }
@@ -167,9 +184,18 @@ export function applyDoc(doc, { song, setBpm }) {
   const grid = doc.grid && typeof doc.grid === 'object' ? doc.grid : {};
   const snapBefore = getSnapId();
   const resolutionBefore = getResolutionId();
+  const swingBefore = getSwing();
   const meterBefore = getMeterId();
   if (SNAP_CHOICES.some((s) => s.id === grid.snap)) setSnapId(grid.snap);
   if (RESOLUTION_CHOICES.some((r) => r.id === grid.resolution)) setResolutionId(grid.resolution);
+  // Absent in every song written before the lane had a step of its own, which reads as `snap` - the
+  // behaviour those songs were written under.
+  // A number rather than a named choice, so it is checked as one. Absent reads as straight, which is
+  // what every song written before swing existed was.
+  const savedSwing = Number(grid.swing);
+  setSwing(Number.isFinite(savedSwing) && savedSwing >= SWING_STRAIGHT && savedSwing <= MAX_SWING
+    ? savedSwing
+    : SWING_STRAIGHT);
   if (METER_CHOICES.some((m) => m.id === doc.meter)) setMeterId(doc.meter);
 
   // Put all three back if the song turns out to be unreadable. The grid has to go on first - the
@@ -178,8 +204,19 @@ export function applyDoc(doc, { song, setBpm }) {
   if (!song.load(doc.song)) {
     setSnapId(snapBefore);
     setResolutionId(resolutionBefore);
+    setSwing(swingBefore);
     setMeterId(meterBefore);
     return false;
+  }
+
+  // A save from the hour the step lane's scale was one global setting states it once, for the lane,
+  // rather than once per part. Handed to every part that has none of its own, so a song written on a
+  // shuffle lane still opens on one - and gone from the document on its next save, like the legacy
+  // pass count before it.
+  if (LANE_STEP_CHOICES.some((c) => c.id === grid.laneStep) && grid.laneStep !== 'snap') {
+    for (const track of song.getTracks()) {
+      if (song.trackLaneStepId(track) === 'snap') song.setTrackLaneStep(track.id, grid.laneStep);
+    }
   }
 
   const bpm = Number(doc.bpm);

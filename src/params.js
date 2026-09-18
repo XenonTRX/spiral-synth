@@ -83,13 +83,26 @@ export function levelParam({ label = 'Level', def = 0.25, help } = {}) {
  * A `db` parameter cannot use the `log` scale, and the reason is the whole point of having a third
  * one: a logarithmic scale needs a positive minimum, and a level's minimum is zero. So the taper runs
  * in decibels from this floor to the parameter's maximum, and position zero is silence rather than
- * -60dB - which is what a fader at the bottom means everywhere else in the world.
+ * the floor - which is what a fader at the bottom means everywhere else in the world.
  *
- * -60dB is inaudible on any system, and carrying on below it would spend travel on differences nobody
- * can hear. The master fader in master-strip.js uses the same floor for the same reason; it is not a
- * declared parameter, so it does its own arithmetic.
+ * **It was -60dB, and -60 was the wrong thing to optimise.** The reasoning was that -60 is inaudible
+ * on any system and carrying on below it would spend travel on differences nobody can hear, which is
+ * true and answers the question "how quiet should the quietest setting be" - a question nobody asks
+ * of a fader. The one they do ask is "how precisely can I set this", and the answer was: a part
+ * level is a 0-to-1.5 amplitude, so the taper spans 63.5dB, and the rack's fader is 84 pixels wide.
+ * **0.76dB per pixel.** A one-pixel twitch was most of a decibel, which is audible on a balance you
+ * are trying to get right, and there is no finer gesture available on a slider.
+ *
+ * At -40dB the same fader spans 43.5dB, and it is 110 pixels now: **0.40dB per pixel**, 1.9 times
+ * finer. What it costs is settings between -40 and -60dB, which are the ones nobody can hear - and
+ * silence is still at the bottom of the travel, so "off" did not move. Existing songs are unaffected:
+ * a level is stored as a gain, so only where the thumb sits changes, never the loudness.
+ *
+ * The monitor fader in master-strip.js keeps its own -60 and should: it is the listening level rather
+ * than a mix control, the useful part of its travel is the top, and a monitor you cannot turn almost
+ * all the way down is worse than one that is coarse.
  */
-export const DB_FLOOR = -60;
+export const DB_FLOOR = -40;
 
 const asDb = (gain) => 20 * Math.log10(gain);
 

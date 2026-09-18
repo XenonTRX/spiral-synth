@@ -17,6 +17,12 @@ import { createFadeLane } from './fade-lane.js';
 import { getInstrument } from './instruments.js';
 import { barBeats, subscribeMeter } from './meter.js';
 import { UNIT_STEPS, unitForValue, valueForUnit } from './param-controls.js';
+import { MAX_TRACK_OFFSET_MS } from './track-time.js';
+
+// How much one click of the offset stepper is worth. Five milliseconds, because the whole useful
+// range is about 30 either way - a stepper of one would need thirty clicks to cross it, and one of
+// ten cannot find the settings in between that are the entire point of the control.
+const OFFSET_STEP_MS = 5;
 
 /**
  * The knob that means "how loud is this part", asked of the instrument rather than assumed.
@@ -130,7 +136,17 @@ export function createTrackRack({ song, onLevel }) {
     const passes = document.createElement('span');
     passes.className = 'rack__passes';
 
-    region.append(from.wrap, bars.wrap, passes);
+    // And a third stepper, in milliseconds rather than in bars, because it is a different kind of
+    // quantity: the other two say where the part sits in the arrangement, and this says how far off
+    // the grid it actually sounds. It is next to them anyway - all three are "where is this part in
+    // time" - and it is the one that can go negative, which is what it is for. A part cannot be
+    // written before the first beat; it can be played ahead of it.
+    const nudge = stepper('nudge', 'How far ahead of or behind the grid this part sounds, in milliseconds — for feel, not for arrangement. Negative is early. It moves no notes and nothing on screen changes.', null, (track, delta) => {
+      song.setTrackOffsetMs(id, song.trackOffsetMs(track) + delta * OFFSET_STEP_MS);
+    });
+    nudge.wrap.classList.add('rack__nudge');
+
+    region.append(from.wrap, bars.wrap, passes, nudge.wrap);
 
     // How long the part takes to arrive and to leave - drawn as the part rather than counted, which is
     // fade-lane.js's whole argument. It sits next to the region and not in the synth panel because a
@@ -179,9 +195,16 @@ export function createTrackRack({ song, onLevel }) {
       // would fill the stack with a hundred steps of one gesture, and pushing it on release would
       // leave a stack whose entries depend on how you happened to move the mouse.
       track.instrument.state[param.key] = valueForUnit(param, Number(level.value) / UNIT_STEPS);
-      showLevel({ level }, track);
+      showLevel({ level, levelValue }, track);
       onLevel?.(track);
     });
+
+    // The number, beside the fader. It was in the fader's `title` and nowhere else, which is to say
+    // it was available if you knew to hover and hold still - so balancing by numbers, or repeating a
+    // level you liked on another part, meant hovering over each one in turn. A mix is the one place
+    // in this app where the *same* figure on two controls is the whole point of reading it.
+    const levelValue = document.createElement('span');
+    levelValue.className = 'rack__level-value';
 
     const mute = document.createElement('button');
     mute.type = 'button';
@@ -203,13 +226,14 @@ export function createTrackRack({ song, onLevel }) {
       song.removeTrack(id);
     });
 
-    row.append(pick, name, voice, count, region, fades.element, level, mute, remove);
-    return { row, pick, name, voice, count, region, from, bars, passes, fades, level, mute, remove };
+    row.append(pick, name, voice, count, region, fades.element, level, levelValue, mute, remove);
+    return { row, pick, name, voice, count, region, from, bars, passes, nudge, fades, level, levelValue, mute, remove };
   }
 
   function showLevel(refs, track) {
     const param = levelParam(track);
     refs.level.hidden = !param;
+    refs.levelValue.hidden = !param;
     if (!param) return;
     const value = Number(track.instrument.state[param.key] ?? param.def);
     const unit = String(unitForValue(param, value));
@@ -218,7 +242,11 @@ export function createTrackRack({ song, onLevel }) {
     if (document.activeElement !== refs.level && refs.level.value !== unit) {
       refs.level.value = unit;
     }
-    refs.level.title = `${param.label} — ${param.format ? param.format(value) : value.toFixed(2)}`;
+    const spelled = param.format ? param.format(value) : value.toFixed(2);
+    refs.level.title = `${param.label} — ${spelled}`;
+    // Written on every pass, including mid-drag: it is a readout rather than a control, so there is
+    // no pointer for it to fight, and watching the number while dragging is most of the point of it.
+    refs.levelValue.textContent = spelled;
   }
 
   function updateRow(refs, track, index, active) {
@@ -252,6 +280,13 @@ export function createTrackRack({ song, onLevel }) {
     // part is set to stop mid-phrase, which is a thing you may well have meant.
     refs.bars.value.textContent = Number.isInteger(spanBars) ? String(spanBars) : spanBars.toFixed(2);
     refs.bars.less.disabled = spanBars <= 1;
+    // In milliseconds, signed, because the sign is the information - "20" and "−20" are opposite
+    // instructions and a bare number would read as neither.
+    const offset = song.trackOffsetMs(track);
+    refs.nudge.value.textContent = offset === 0 ? '0' : `${offset > 0 ? '+' : '−'}${Math.abs(offset)}`;
+    refs.nudge.wrap.classList.toggle('is-set', offset !== 0);
+    refs.nudge.less.disabled = offset <= -MAX_TRACK_OFFSET_MS;
+
     refs.passes.textContent = passCount > 1 ? `×${passCount}` : '';
     refs.passes.title = passCount > 1
       ? `${passCount} passes of ${period} bar${period === 1 ? '' : 's'} of material`

@@ -931,7 +931,8 @@ kbd {
 .lane__head {
   display: flex;
   align-items: baseline;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 4px 10px;
   margin-bottom: 6px;
 }
 
@@ -942,6 +943,82 @@ kbd {
 
 .lane__hint {
   font-size: 10px;
+  color: var(--text-dim);
+  /* The controls beside it are all `flex: none`, so this is what gives when the window narrows -
+     and with the head wrapping, what it gives is a second line rather than its own text. */
+  min-width: 0;
+}
+
+/* The scale picker. Beside the title rather than out with the toolbar's Snap and Resolution,
+   because it belongs to this surface and to nothing else - the roll does not change when it does. */
+.lane__step {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.lane__step-select {
+  font-size: 10px;
+  padding: 1px 3px;
+}
+
+/* Beside the scale it is defined against, because the two are one setting in two halves: how wide a
+   step is, and how late every other one of them plays. */
+/* The offset stepper wears the same clothes as the two bar steppers beside it, and lights up when
+   it is doing something - a part sitting off the grid is not visible anywhere else, so the control
+   itself has to say so. */
+.rack__nudge.is-set span {
+  color: var(--accent);
+}
+
+.lane__length {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.lane__length-input {
+  width: 52px;
+  font-size: 10px;
+  padding: 1px 3px;
+  font-variant-numeric: tabular-nums;
+}
+
+.lane__auto {
+  flex: none;
+  padding: 1px 6px;
+  font-size: 10px;
+}
+
+.lane__swing {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+/* The global rule pins a range input at 110px, which is more than this needs next to a title. */
+.lane__swing-slider {
+  width: 76px;
+}
+
+.lane__swing-value {
+  min-width: 68px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+/* Straight is the off position, and it says so rather than making you read the slider. */
+.lane__swing-value.is-off {
   color: var(--text-dim);
 }
 
@@ -2723,8 +2800,22 @@ input[type="range"].master__fader {
    1.2dB per pixel, which is coarse for the one control you nudge most. At 84px it is 0.75dB, and the
    exact figure is in the tooltip for when that is not enough - the synth panel's copy of the same knob
    is wider still. */
+/* 110px rather than the 84 it was, which is the other half of the precision change in params.js:
+   the taper now spans 43.5dB instead of 63.5, and over this width that is 0.40dB a pixel against
+   0.76 before - 1.9 times finer for the same gesture. */
 input[type="range"].rack__level {
-  width: 84px;
+  width: 110px;
+}
+
+/* The level as a number, beside the fader that sets it. Tabular and fixed-width so a column of
+   parts reads as a column of figures rather than as text that shifts about as the values change. */
+.rack__level-value {
+  flex: none;
+  width: 52px;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--text-dim);
 }
 
 /* --- effects ----------------------------------------------------------------------------------- */

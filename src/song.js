@@ -26,17 +26,20 @@ import {
   durationBeats,
   midiFromOctavePc,
 } from './music-theory.js';
-import { quantizeLength } from './grid.js';
+import { LANE_STEP_CHOICES, quantizeLength, trackLaneStepId } from './grid.js';
+import { MAX_TRACK_OFFSET_MS, clampOffsetMs, trackOffsetMs } from './track-time.js';
 import {
   BEAT_EPSILON,
   fadeOf,
   repeatOffsets,
+  songBeat,
   sourceBeat,
   trackBegin,
   trackCovers,
   trackEnd,
   trackExtent,
   trackIsPinned,
+  trackOwnPeriod,
   trackPasses,
   trackPeriod,
   trackSpan,
@@ -212,6 +215,16 @@ export function createSong() {
       // than sixteen copies of its notes.
       begin: 0,
       end: null,
+      // How far ahead of or behind the grid this part actually sounds, in *milliseconds*. See
+      // MAX_TRACK_OFFSET_MS for why this one duration is not in whole notes like the rest.
+      offsetMs: 0,
+      // Which scale this part's step lane is on - a drum machine's per-track scale. `'snap'` follows
+      // the toolbar, which is what every part did before the setting belonged to a part.
+      laneStep: 'snap',
+      // How long one pass is, or null for "as long as the material" - a drum machine's last step.
+      // Null is what a new part gets, because a pattern length nobody has set should follow what is
+      // written into it; see trackPeriod.
+      period: null,
       // How long the part takes to arrive and to leave, in whole notes, measured from the two edges of
       // the region above. Zero is no fade at all, which is what a new part gets - a part that faded in
       // by default would be a part nobody could hear the beginning of.
@@ -565,6 +578,12 @@ export function createSong() {
         // expressed the old way, and writing null for it would have quietly thrown the arrangement
         // of every previously-saved song away on its first save.
         end: trackIsPinned(track) ? trackEnd(track) : null,
+        // The raw setting rather than the resolved period, because unset is a real answer here in a
+        // way it is not for `end`: a part whose pattern length follows its material has to go on
+        // doing that after a round trip, and writing the derived number would pin it.
+        laneStep: trackLaneStepId(track),
+        offsetMs: trackOffsetMs(track),
+        period: trackOwnPeriod(track),
         fadeIn: fadeOf(track, 'fadeIn'),
         fadeOut: fadeOf(track, 'fadeOut'),
         instrument: { type: track.instrument.type, state: { ...track.instrument.state } },
@@ -684,6 +703,18 @@ export function createSong() {
       // load instead of playing silence and leaving the owner to work out why - which is exactly
       // the promise the rest of this loader makes about every other field.
       end: readEnd(raw.end, Math.max(0, readNumber(raw.begin, 0))),
+      // Absent in every save written before pattern lengths existed, and absent is exactly what those
+      // songs meant - the material's own length - so this needs no migration either. Anything not a
+      // positive number reads as unset rather than as zero, since a pass of no length would not
+      // terminate the loop that generates them.
+      // Absent in every save written before the scale belonged to a part, and an id this build does
+      // not know reads as `snap` - the same repair every other named choice here gets.
+      laneStep: LANE_STEP_CHOICES.some((c) => c.id === raw.laneStep) ? raw.laneStep : 'snap',
+      // Absent reads as zero, which is a part that sounds where it is written - what every song
+      // written before this had. Clamped on the way in, so a hand-edited file cannot ask for an
+      // offset bigger than the scheduler's lookahead.
+      offsetMs: clampOffsetMs(readNumber(raw.offsetMs, 0)),
+      period: readNumber(raw.period, 0) > 0 ? readNumber(raw.period, 0) : null,
       // Absent in every save written before fades existed, which `readNumber` reads as zero - and zero
       // is exactly right here, so this is one of the rare fields that needs no migration at all.
       fadeIn: Math.max(0, readNumber(raw.fadeIn, 0)),
@@ -962,6 +993,53 @@ export function createSong() {
     },
 
     /**
+     * How far ahead of or behind the grid this part sounds, in milliseconds.
+     *
+     * Negative is early. Nothing moves on screen and no note is edited - see notesInWindow.
+     */
+    setTrackOffsetMs(id, ms) {
+      const track = trackById(id);
+      if (!track) return;
+      const next = clampOffsetMs(Number(ms));
+      if (next === trackOffsetMs(track)) return;
+      track.offsetMs = next;
+      // A track-strip change: it moves no note and changes no length, it only changes when the part
+      // is handed to the clock.
+      emit(CHANGE.TRACKS);
+    },
+
+    /** Which scale this part's step lane is on. See LANE_STEP_CHOICES. */
+    setTrackLaneStep(id, stepId) {
+      const track = trackById(id);
+      if (!track || !LANE_STEP_CHOICES.some((c) => c.id === stepId)) return;
+      if (track.laneStep === stepId) return;
+      track.laneStep = stepId;
+      // A track-strip change rather than a structural one: it moves no note and changes no length.
+      // It does change what swing is defined against, which is why it emits at all.
+      emit(CHANGE.TRACKS);
+    },
+
+    /**
+     * How long one pass of a part is, in whole notes - its pattern length.
+     *
+     * `null` hands it back to the material, which is where every part starts. Separate from
+     * `setTrackRegion` because it is a different question: that one is where the part sits in the
+     * song and how long it plays for, this is how long it is before it comes round again, and a
+     * gesture only ever means one of them.
+     */
+    setTrackPeriod(id, beats) {
+      const track = trackById(id);
+      if (!track) return;
+      const was = track.period ?? null;
+      const next = Number(beats);
+      track.period = beats === null || !Number.isFinite(next) || next <= 0 ? null : next;
+      if ((track.period ?? null) === was) return;
+      // Structural: it changes how many passes there are, what the roll draws and what plays.
+      emit(CHANGE.TRACKS);
+      emit(CHANGE.NOTES);
+    },
+
+    /**
      * How long a part takes to arrive and to leave, in whole notes.
      *
      * Either may be omitted to leave it alone, the same convention `setTrackRegion` uses, because a
@@ -991,6 +1069,9 @@ export function createSong() {
     trackExtent,
     trackFade: (track, key) => fadeOf(track, key),
     trackPeriod,
+    trackOwnPeriod,
+    trackLaneStepId,
+    trackOffsetMs,
     trackBegin,
     trackSpan,
     trackEnd,
@@ -998,6 +1079,7 @@ export function createSong() {
     trackCovers,
     repeatOffsets,
     sourceBeat: (trackId, beat) => sourceBeat(trackById(trackId), beat),
+    songBeat: (trackId, local, near) => songBeat(trackById(trackId), local, near),
 
     // notes
     addNote,

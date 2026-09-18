@@ -190,13 +190,13 @@ arithmetic and import without a browser, plus the static server. See
 |---|---|
 | `src/song.js` | the model — parts, notes, key markers, both cursors, selection, undo |
 | `src/main.js` | the composition root — every panel built and wired to one song |
-| `src/track-time.js` | where a part sits in the song, and how its material folds onto that |
+| `src/track-time.js` | where a part sits in the song, how long one pass of it is, how far off the grid it sounds, and how its material folds onto that |
 | `src/piano-roll.js` | the grid, the ruler, the fade lane, the key gutter, and every pointer gesture on them |
 | `src/roll-spectrum.js` | the recording drawn behind the notes - one blit, parked over the viewport |
 | `src/roll-viewport.js` | where the roll is looking - reveal, centre, and following a kit's range |
 | `src/track-rack.js` | the rack: one row per part, sitting above the roll |
 | `src/time-scale.js` | how much room one whole note is worth - the roll's only zoom |
-| `src/drum-lane.js` | the step lane — a drum grid over the same notes the roll edits, one to four hits a step |
+| `src/drum-lane.js` | the step lane — one pattern of the drum grid, at the part's own scale and length, one to four hits a step |
 | `src/edits.js` | operations reachable from more than one surface, so they cannot diverge |
 | `src/keyboard.js` | the shortcut layer |
 
@@ -218,11 +218,11 @@ arithmetic and import without a browser, plus the static server. See
 
 | | |
 |---|---|
-| `src/grid.js` | snap and resolution — where starts and lengths are allowed to land |
+| `src/grid.js` | snap, resolution, the step scales a part can be on, and swing — where starts and lengths are allowed to land, and where they are played |
 | `src/meter.js` | the bar map — how long a bar is, how it divides, and how positions are counted |
 | `src/tempo.js` | the tempo, in one place, so a synced delay can read it |
 | `src/transport.js` | lookahead scheduling on one shared timeline |
-| `src/timeline.js` | which notes are where — the one walk the transport and the exporter share |
+| `src/timeline.js` | which notes are where — the one walk the transport and the exporter share, and where swing is applied to it |
 | `src/export.js` | rendering the song offline, and writing a WAV by hand |
 | `src/automation.js` | what is a function of where you are in the song — fades, and a synced sweep |
 | `src/fade-lane.js` | a part's two fades, drawn as the part and dragged by its corners — at either scale |
